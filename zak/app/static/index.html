@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clinic</title>
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="phone.css">
+</head>
+<body>
+<header class="top hidden" id="top">
+  <div class="search-wrap">
+    <input id="q" type="search" data-lang="ar" dir="auto" placeholder="Search patient — name or phone  (F2)" autocomplete="off">
+    <div id="qres" class="dropdown hidden"></div>
+  </div>
+  <nav id="nav">
+    <button data-go="#/today">Today</button>
+    <button data-go="#/new" class="primary">+ New patient</button>
+    <button data-go="#/log" class="dr">Visits log</button>
+    <button data-go="#/calc" class="dr">Calculators</button>
+    <button data-go="#/reg" class="dr">Registries</button>
+    <button data-go="#/stats" class="dr">Statistics</button>
+    <button data-go="#/money" class="dr">Accounts</button>
+    <button data-go="#/settings">Settings</button>
+  </nav>
+  <div id="cloud" class="net hidden" style="margin-left:auto"></div>
+  <div id="net" class="net ok" title="Save status" style="margin-left:0">● Saved</div>
+  <button id="who" class="who" title="Sign out"></button>
+</header>
+<main id="view"></main>
+<div id="toast" class="toast hidden"></div>
+<div id="combo" class="dropdown combo hidden"></div>
+<div id="modal" class="modal hidden"><div class="mbox" id="mbox"></div></div>
+<script src="app.js"></script>
+<script src="extra.js"></script>
+<script src="more.js"></script>
+<script src="ar.js"></script>
+<script src="phone.js"></script>
+</body>
+</html>

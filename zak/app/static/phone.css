@@ -1,0 +1,125 @@
+/* Phone layout of the full program (screens up to 760 px).
+   Loaded after app.css; everything here applies only on a narrow screen. */
+#phMenu{display:none}
+@media (max-width:760px){
+  html,body{--fs:15px;overflow-x:hidden}
+  input,select,textarea{font-size:16px}
+  main{padding:6px 6px 70px}
+  .card{padding:10px;border-radius:10px;overflow-x:auto}
+  .card h3{flex-wrap:wrap;row-gap:4px}
+
+  /* ---------- top bar: menu button + search + status */
+  .top{flex-wrap:wrap;gap:6px;padding:6px 8px}
+  #phMenu{display:inline-flex;align-items:center;justify-content:center;width:38px;height:36px;padding:0;font-size:20px;background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.3)}
+  .search-wrap{order:1;flex:1;min-width:0;max-width:none}
+  #q{font-size:16px;padding:7px 10px}
+  .top .net,#cloud{order:2;margin-left:0!important;margin-right:0!important;font-size:11px;padding:2px 6px}
+  #bkWarn{order:2}
+  .who,#pcOff{order:3;font-size:12px;padding:3px 8px;max-width:130px;overflow:hidden;text-overflow:ellipsis}
+  .top nav{display:none;order:9;flex:0 0 100%;flex-direction:column;gap:4px;padding:6px 0 4px}
+  body.navopen .top nav{display:flex}
+  .top nav button{justify-content:flex-start;font-size:16px;padding:10px 12px}
+  .top nav button span{display:inline!important}
+  .top nav button.dr{padding:10px 12px}
+
+  /* ---------- search results */
+  #qres{position:fixed;left:6px;right:6px;top:auto;min-width:0;max-height:70vh}
+  #qres .it.res{grid-template-columns:minmax(0,1fr) 34px 112px;gap:6px;padding:9px 8px}
+  #qres .it.res span:nth-child(3){display:none}
+
+  /* ---------- grids become one column */
+  .pgrid,.split,.split.ps,.sgrid,.rgrid,.aigrid,.calcs,.settings-grid{grid-template-columns:1fr!important}
+  .tabsview{grid-template-columns:1fr;gap:8px}
+  .tabsview>*,.split>*,.sgrid>*,.pgrid>*,.rgrid>*,#setPane,#calcPane,#regPane{min-width:0;max-width:100%}
+  .vtabs{position:static;flex-direction:row;overflow-x:auto;max-height:none;padding:4px;gap:4px;-webkit-overflow-scrolling:touch}
+  .vtabs button{flex:0 0 auto;white-space:nowrap;padding:7px 10px}
+  .row{gap:6px}
+  .row>label{flex:1 1 140px}
+  .row>label input,.row>label select,.row>label textarea{width:100%!important;max-width:100%}
+  .grow{min-width:0!important}
+  .actions{gap:6px}
+  .actions>button,.actions>a>button{flex:1 1 auto}
+
+  /* ---------- day bar: swipe sideways */
+  .daybar{flex-wrap:nowrap;overflow-x:auto;gap:4px;-webkit-overflow-scrolling:touch;padding-top:6px}
+  .daybar .db-days{flex:0 0 auto}
+  .daybar .dchip{flex:0 0 52px;min-width:52px}
+  .daybar [data-dd="-7"],.daybar [data-dd="7"]{display:none}
+  .daybar .db-n,.daybar .db-t{flex:0 0 auto;padding:8px 9px}
+  .daybar .dmy{flex:0 0 auto}
+
+  /* ---------- appointments table → one card per patient */
+  #tb thead{display:none}
+  #tb,#tb tbody{display:block;width:100%}
+  #tb tr{display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;padding:8px 4px;border-bottom:1px solid var(--line)}
+  #tb td{display:block;border:0;padding:1px 0}
+  #tb td:nth-child(1){order:0;font-weight:700}
+  #tb td:nth-child(3){order:1;flex:1 1 60%;font-size:16px}
+  #tb td:nth-child(2){order:2}
+  #tb td:nth-child(4)::after{content:' y';color:var(--muted)}
+  #tb td.stbtns{order:9;flex:0 0 100%;white-space:normal!important;display:flex;flex-wrap:wrap;gap:5px}
+  #tb td.stbtns button{padding:6px 10px;font-size:13px}
+  #tb td[colspan]{flex:1}
+  .rgrid table.t td{display:block;border:0;padding:2px 0}
+  .rgrid table.t tr{display:block;padding:8px 0;border-bottom:1px solid var(--line)}
+  .rgrid .stbtns{display:flex;flex-wrap:wrap;gap:5px}
+
+  /* ---------- patient file */
+  .phead{gap:6px 10px}
+  .phead .pname{font-size:19px;flex:0 0 100%}
+  .phead>span[style*="flex:1"]{display:none}
+  .vlist{max-height:180px;overflow:auto}
+  .vitals{grid-template-columns:repeat(3,1fr);gap:5px}
+  .vitals input{font-size:16px;padding:6px 2px}
+  .soap{grid-template-columns:34px 1fr;gap:6px}
+  .soap .k{font-size:15px}
+  .soap .k small{display:none}
+  .soap textarea{font-size:16px}
+  .meds .m{gap:4px}
+  .meds .m .n{width:16px;font-size:12px}
+  .meds .m input{font-size:15px;padding:7px 6px}
+  .meds .m button{padding:4px 7px}
+  .meds .m button[data-mu]{display:none}
+  .sum dl{grid-template-columns:82px 1fr}
+  .thumbs{grid-template-columns:repeat(auto-fill,minmax(70px,1fr))}
+  .labtbl td{font-size:13px}
+
+  /* ---------- tables that cannot be squeezed scroll sideways inside their card */
+  table.t:not(#tb):not(.labtbl){display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table.t:not(#tb):not(.labtbl) td{white-space:nowrap}
+  .reg td .chip{white-space:nowrap}
+  table.lyt{display:block;overflow-x:auto}
+
+  /* ---------- dialogs fill the screen */
+  .modal{padding:0;align-items:stretch}
+  .mbox{border-radius:0;min-height:100%;max-width:none;padding:10px 10px 30px}
+  .mbox h2{flex-wrap:wrap;font-size:15px;position:sticky;top:-10px;background:var(--card);z-index:2;padding:8px 0;margin:-2px 0 8px}
+  .mbox .foot{position:sticky;bottom:-30px;background:var(--card);padding:10px 0;flex-wrap:wrap}
+  .mbox .foot button{flex:1 1 auto;padding:10px}
+  .mbox textarea{font-size:16px}
+  .combo{max-width:calc(100vw - 12px)}
+
+  /* ---------- printing settings preview */
+  .pv iframe{zoom:.55}
+  .pvcol .card{position:static}
+  .seg{grid-template-columns:1fr}
+
+  /* ---------- statistics / accounts */
+  .kpis{grid-template-columns:repeat(2,1fr);gap:6px}
+  .kpi{padding:8px 10px}
+  .kpi b{font-size:18px}
+  .hb{grid-template-columns:minmax(90px,45%) 1fr 30px}
+  .bars{height:140px}
+
+  /* ---------- the handoff status bar */
+  .pcbar{font-size:13px;padding:6px 10px}
+  .toast{bottom:12px;max-width:92vw;text-align:center}
+}
+
+/* printing from the phone: the document is put into the page itself (Android Chrome cannot print a hidden frame) */
+#prt{display:none}
+@media print{
+  body.printing>*:not(#prt){display:none!important}
+  body.printing #prt{display:block!important}
+  body.printing{background:#fff!important}
+}

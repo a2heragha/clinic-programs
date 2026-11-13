@@ -1,0 +1,385 @@
+# -*- coding: utf-8 -*-
+"""
+Online version (Google Sheets + Apps Script): sync between the clinic PC and the phone page.
+Python standard library only. Runs in a background thread inside the server; without internet it waits and retries.
+
+The database stays on the clinic PC. Google holds a working copy for the phone:
+  - appointments            both ways (secretary books from the phone, the clinic marks arrived/done …)
+  - new patients            phone → PC (secretary registers a patient; the PC creates the file and answers with its number)
+  - patient list            PC → Google (name, birth year, phone, address — for the secretary's search)
+  - clinical summaries      PC → Google (doctor's read-only English view: flags, last visits, meds, key labs)
+  - users / PIN hashes      PC → Google (the phone page asks for the same PINs as the program)
+  - daily full backup       PC → Google Drive
+
+Protocol: POST JSON {token, action, ...} to the Apps Script web-app URL → {ok, ...}
+"""
+import json, time, uuid, base64, hashlib, os, tempfile, threading, datetime, sqlite3, urllib.request, urllib.error
+
+APPT_FIELDS = ['uid', 'date', 'time', 'seq', 'patient_id', 'name', 'phone', 'note', 'status', 'updated_at', 'deleted', 'weight', 'kind', 'call', 'hold', 'reminded']
+STATE = {'enabled': False, 'last_ok': None, 'last_try': None, 'error': None, 'pushed': 0, 'pulled': 0,
+         'new_patients': 0, 'clinical_last': None, 'backup_last': None, 'running': False}
+_lock = threading.Lock()
+GATE = None        # set by the server: only the PC holding the hand-over lease syncs (handoff.py)
+KEY_LABS = ['HBA1C', 'FBS', 'RBS', 'LDL', 'TC', 'HDL', 'TG', 'CREAT', 'UREA', 'TSH', 'HB', 'FERRITIN', 'VITD', 'ALT', 'AST', 'CRP', 'UACR', 'K', 'NA', 'INR']
+
+
+def now_ms():
+    return int(time.time() * 1000)
+
+
+def new_uid():
+    return uuid.uuid4().hex
+
+
+def meta_get(conn, k, default=None):
+    r = conn.execute('SELECT v FROM meta WHERE k=?', (k,)).fetchone()
+    return r[0] if r and r[0] is not None else default
+
+
+def meta_set(conn, k, v):
+    conn.execute('INSERT OR REPLACE INTO meta VALUES(?,?)', (k, None if v is None else str(v)))
+
+
+def config(conn):
+    return meta_get(conn, 'sync_url', '') or '', meta_get(conn, 'sync_token', '') or ''
+
+
+def call(url, token, action, timeout=60, **payload):
+    payload.update({'token': token, 'action': action})
+    data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+    req = urllib.request.Request(url, data=data, headers={'Content-Type': 'text/plain;charset=utf-8'}, method='POST')
+    with urllib.request.urlopen(req, timeout=timeout) as r:    # Apps Script answers with a redirect; urllib follows it
+        body = r.read().decode('utf-8')
+    try:
+        res = json.loads(body)
+    except ValueError:
+        raise RuntimeError('Unexpected answer from Google — check the link and that the script is deployed with access "Anyone"')
+    if not res.get('ok'):
+        raise RuntimeError(res.get('error') or 'Error from Google')
+    return res
+
+
+def age(by):
+    try:
+        return datetime.date.today().year - int(by) if by else ''
+    except (TypeError, ValueError):
+        return ''
+
+
+# ------------------------------------------------------------------ appointments
+def push_appts(conn, url, token, write_lock):
+    rows = conn.execute('SELECT * FROM appointments WHERE uid IS NOT NULL AND updated_at > COALESCE(synced_at,0) ORDER BY updated_at LIMIT 500').fetchall()
+    if not rows:
+        return 0
+    out = []
+    for r in rows:
+        d = {k: r[k] for k in APPT_FIELDS}
+        if r['patient_id']:
+            p = conn.execute('SELECT name, phone, birth_year FROM patients WHERE id=?', (r['patient_id'],)).fetchone()
+            if p:
+                d['name'] = p['name']
+                d['phone'] = d['phone'] or p['phone'] or ''
+                d['age'] = age(p['birth_year'])
+        out.append(d)
+    call(url, token, 'push', rows=out)
+    with write_lock:
+        for r in rows:          # mark as synced unless edited again meanwhile
+            conn.execute('UPDATE appointments SET synced_at=? WHERE id=? AND updated_at=?', (r['updated_at'], r['id'], r['updated_at']))
+        conn.commit()
+    return len(rows)
+
+
+def local_patient_id(conn, pid):
+    """phone rows may point to a patient registered on the phone: 'n:<uid>' → the PC file number"""
+    pid = str(pid or '').strip()
+    if not pid:
+        return None
+    if pid.startswith('n:'):
+        r = conn.execute('SELECT id FROM patients WHERE online_uid=?', (pid[2:],)).fetchone()
+        return r[0] if r else None
+    try:
+        pid = int(float(pid))
+    except ValueError:
+        return None
+    return pid if conn.execute('SELECT 1 FROM patients WHERE id=?', (pid,)).fetchone() else None
+
+
+def apply_appt(conn, rem):
+    uid = rem.get('uid')
+    if not uid or not rem.get('date'):
+        return False
+    rem_upd = int(float(rem.get('updated_at') or 0))
+    loc = conn.execute('SELECT * FROM appointments WHERE uid=?', (uid,)).fetchone()
+    if loc and int(loc['updated_at'] or 0) >= rem_upd:
+        return False
+    raw_pid = str(rem.get('patient_id') or '')
+    pid = local_patient_id(conn, raw_pid)
+    vals = {k: str(rem.get(k) if rem.get(k) is not None else '') for k in ('date', 'time', 'name', 'phone', 'note', 'status')}
+    try:
+        vals['seq'] = int(float(rem['seq'])) if str(rem.get('seq') or '').strip() else None
+    except ValueError:
+        vals['seq'] = None
+    try:
+        w = float(str(rem.get('weight') or '').strip() or 'x')
+        vals['weight'] = w if 2 <= w <= 300 else None
+    except ValueError:
+        vals['weight'] = None
+    old_w = loc['weight'] if loc else None
+    vals['kind'] = 'auto' if rem.get('kind') == 'auto' else ''
+    vals['call'] = rem.get('call') if rem.get('call') in ('yes', 'no', 'noans') else ''
+    vals['hold'] = 1 if str(rem.get('hold') or '0') in ('1', 'true', 'True') else 0
+    try:
+        vals['reminded'] = int(float(rem['reminded'])) if str(rem.get('reminded') or '').strip() else None
+    except ValueError:
+        vals['reminded'] = None
+    vals['patient_id'] = pid
+    vals['deleted'] = 1 if str(rem.get('deleted') or '0') in ('1', 'true', 'True') else 0
+    vals['updated_at'] = rem_upd
+    vals['synced_at'] = rem_upd
+    if raw_pid.startswith('n:') and pid:             # send the real file number back to the phone
+        vals['updated_at'] = now_ms()
+        vals['synced_at'] = rem_upd
+    if loc:
+        conn.execute('UPDATE appointments SET %s WHERE id=?' % ', '.join('%s=?' % k for k in vals), list(vals.values()) + [loc['id']])
+    else:
+        if vals['deleted']:
+            return False
+        vals['uid'] = uid
+        vals['created_by'] = str(rem.get('by') or 'phone')
+        if vals['seq'] is None:
+            vals['seq'] = conn.execute('SELECT COALESCE(MAX(seq),0)+1 FROM appointments WHERE date=?', (vals['date'],)).fetchone()[0]
+        conn.execute('INSERT INTO appointments(%s) VALUES(%s)' % (', '.join(vals), ', '.join('?' * len(vals))), list(vals.values()))
+    if vals['weight'] and pid:      # weight typed on the phone → that day's visit (unless the doctor wrote another)
+        conn.execute('UPDATE visits SET weight=? WHERE patient_id=? AND date=? AND (weight IS NULL OR weight=?)',
+                     (vals['weight'], pid, vals['date'], old_w if old_w is not None else vals['weight']))
+    return True
+
+
+def create_new_patients(conn, rows):
+    """patients registered on the phone → files on the PC. Returns [[uid, id]] to confirm to Google."""
+    from common import norm_name, norm_phone
+    done = []
+    for r in rows:
+        uid = str(r.get('uid') or '')
+        if not uid or not str(r.get('name') or '').strip():
+            continue
+        ex = conn.execute('SELECT id FROM patients WHERE online_uid=?', (uid,)).fetchone()
+        if ex:
+            done.append([uid, ex[0]])
+            continue
+        try:
+            by = int(float(r.get('birth_year'))) if str(r.get('birth_year') or '').strip() else None
+            if by and not 1900 < by <= datetime.date.today().year:
+                by = None
+        except ValueError:
+            by = None
+        g = str(r.get('gender') or '')
+        pid = conn.execute('''INSERT INTO patients(name,name_norm,gender,birth_year,phone,phone_norm,address,occupation,created_by,online_uid)
+                              VALUES(?,?,?,?,?,?,?,?,?,?)''',
+                           (str(r['name']).strip(), norm_name(r['name']), g if g in ('M', 'F') else None, by, str(r.get('phone') or '').strip() or None,
+                            norm_phone(r.get('phone')), str(r.get('address') or '').strip() or None, str(r.get('occupation') or '').strip() or None,
+                            str(r.get('by') or 'phone'), uid)).lastrowid
+        for kind, col in (('area', 'address'), ('occupation', 'occupation')):
+            v = str(r.get(col) or '').strip()
+            if v:
+                conn.execute('INSERT OR IGNORE INTO vocab(kind,name) VALUES(?,?)', (kind, v))
+                conn.execute('UPDATE vocab SET uses=uses+1 WHERE kind=? AND name=?', (kind, v))
+        done.append([uid, pid])
+    return done
+
+
+def pull(conn, url, token, write_lock):
+    since = int(float(meta_get(conn, 'sync_cursor', '0') or 0))
+    res = call(url, token, 'pull', since=since)
+    n = 0
+    with write_lock:
+        done = create_new_patients(conn, res.get('new_patients') or [])
+        for rem in res.get('rows') or []:
+            if apply_appt(conn, rem):
+                n += 1
+        meta_set(conn, 'sync_cursor', int(float(res.get('cursor') or since)))
+        conn.commit()
+    if done:
+        call(url, token, 'ack_patients', rows=done)
+        STATE['new_patients'] += len(done)
+    return n
+
+
+# ------------------------------------------------------------------ patient list, clinical summaries, config
+def push_patients(conn, url, token, write_lock, force=False):
+    rows = [[r['id'], r['name'] or '', r['birth_year'] or '', r['phone'] or '', r['address'] or '', r['last'] or '']
+            for r in conn.execute('''SELECT p.id, p.name, p.birth_year, p.phone, p.address,
+                                            (SELECT MAX(date) FROM visits v WHERE v.patient_id=p.id) last
+                                     FROM patients p ORDER BY p.name_norm''')]
+    h = hashlib.md5(json.dumps(rows, ensure_ascii=False).encode('utf-8')).hexdigest()
+    if not force and h == meta_get(conn, 'sync_patients_hash'):
+        return False
+    call(url, token, 'patients', timeout=120, rows=rows)
+    with write_lock:
+        meta_set(conn, 'sync_patients_hash', h)
+        conn.commit()
+    return True
+
+
+def lines(s):
+    return [x.strip() for x in (s or '').split('\n') if x.strip()]
+
+
+def clinical(conn, pid):
+    """compact summary for the doctor's English phone view"""
+    p = conn.execute('SELECT * FROM patients WHERE id=?', (pid,)).fetchone()
+    vs = []
+    for v in conn.execute('SELECT * FROM visits WHERE patient_id=? ORDER BY date DESC, id DESC LIMIT 12', (pid,)):
+        d = {'d': v['date']}
+        for k, col in (('dx', 'diagnosis'), ('c', 'complaint'), ('e', 'exam'), ('pl', 'plan')):
+            if v[col]:
+                d[k] = v[col][:600]
+        if v['notes'] and not (v['complaint'] or v['exam']):
+            d['n'] = v['notes'][:700]
+        if v['bp_sys']:
+            d['bp'] = '%s/%s' % (v['bp_sys'], v['bp_dia'] or '')
+        for k in ('weight', 'hr', 'spo2', 'rbs'):
+            if v[k]:
+                d[k[:2]] = round(v[k], 1)
+        if v['follow_up']:
+            d['fu'] = v['follow_up']
+        m = [r[0] for r in conn.execute('SELECT line FROM visit_meds WHERE visit_id=? ORDER BY seq, id', (v['id'],))]
+        if m:
+            d['m'] = m
+        vs.append(d)
+    labs = {}
+    for r in conn.execute("SELECT code, date, value, source FROM labs WHERE patient_id=? AND value IS NOT NULL AND code IN (%s) ORDER BY date" % ','.join('?' * len(KEY_LABS)),
+                          [pid] + KEY_LABS):
+        labs.setdefault(r['code'], []).append([r['date'], r['value'], 1 if r['source'] == 'imported' else 0])
+    labs = {k: v[-6:] for k, v in labs.items()}
+    nv = conn.execute('SELECT COUNT(*), MIN(date) FROM visits WHERE patient_id=?', (pid,)).fetchone()
+    nf = conn.execute('SELECT COUNT(*) FROM files WHERE patient_id=?', (pid,)).fetchone()[0]
+    return {'g': p['gender'] or '', 'by': p['birth_year'] or '', 'oc': p['occupation'] or '', 'al': lines(p['allergies']), 'ch': lines(p['chronic']),
+            'lm': lines(p['long_meds']), 'sm': p['smoking'] or '', 'ht': p['height'] or '', 'nv': nv[0], 'first': nv[1] or '', 'nf': nf, 'v': vs, 'l': labs}
+
+
+def push_clinical(conn, url, token, write_lock, force=False):
+    """only patients whose summary changed since the last upload (hash per patient)"""
+    last = dict(conn.execute('SELECT patient_id, h FROM sync_clinical').fetchall())
+    changed, hashes = [], {}
+    for (pid,) in conn.execute('SELECT id FROM patients'):
+        js = json.dumps(clinical(conn, pid), ensure_ascii=False, separators=(',', ':'))
+        h = hashlib.md5(js.encode('utf-8')).hexdigest()[:16]
+        if force or last.get(pid) != h:
+            changed.append([pid, js])
+            hashes[pid] = h
+    gone = [pid for pid in last if pid not in set(r[0] for r in conn.execute('SELECT id FROM patients'))]
+    if not changed and not gone:
+        return 0
+    for i in range(0, len(changed), 250):                       # batches keep each request small
+        batch = changed[i:i + 250]
+        call(url, token, 'clinical', timeout=180, rows=batch, remove=gone if i == 0 else [])
+        with write_lock:
+            for pid, _ in batch:
+                conn.execute('INSERT OR REPLACE INTO sync_clinical(patient_id,h) VALUES(?,?)', (pid, hashes[pid]))
+            conn.commit()
+    if gone and not changed:
+        call(url, token, 'clinical', rows=[], remove=gone)
+    with write_lock:
+        for pid in gone:
+            conn.execute('DELETE FROM sync_clinical WHERE patient_id=?', (pid,))
+        conn.commit()
+    STATE['clinical_last'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+    return len(changed)
+
+
+def push_config(conn, url, token, write_lock):
+    m = dict(conn.execute('SELECT k, v FROM meta').fetchall())
+    cfg = {'clinic': m.get('clinic_name') or '', 'work': [m.get('work_from') or '13:00', m.get('work_to') or '21:00'], 'wa': m.get('wa_template') or '',
+           'users': [[r['name'], r['role'], r['pin']] for r in conn.execute('SELECT name, role, pin FROM users WHERE active=1 AND pin IS NOT NULL ORDER BY role, name')],
+           'areas': [r[0] for r in conn.execute("SELECT name FROM vocab WHERE kind='area' ORDER BY uses DESC LIMIT 400")],
+           'occupations': [r[0] for r in conn.execute("SELECT name FROM vocab WHERE kind='occupation' ORDER BY uses DESC LIMIT 200")],
+           'labs': [[r['code'], r['name'], r['unit'] or '', r['low'], r['high']] for r in conn.execute('SELECT * FROM lab_tests ORDER BY seq')]}
+    h = hashlib.md5(json.dumps(cfg, ensure_ascii=False).encode('utf-8')).hexdigest()
+    if h == meta_get(conn, 'sync_config_hash'):
+        return False
+    call(url, token, 'config', config=cfg)
+    with write_lock:
+        meta_set(conn, 'sync_config_hash', h)
+        conn.commit()
+    return True
+
+
+def upload_backup(db_path, url, token):
+    fd, tmp = tempfile.mkstemp(suffix='.db')
+    os.close(fd)
+    try:
+        src = sqlite3.connect(db_path)
+        dst = sqlite3.connect(tmp)
+        src.backup(dst)
+        dst.close()
+        src.close()
+        with open(tmp, 'rb') as f:
+            data = base64.b64encode(f.read()).decode('ascii')
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+    name = 'clinic_%s.db' % datetime.datetime.now().strftime('%Y-%m-%d_%H%M')
+    call(url, token, 'backup', timeout=300, name=name, data=data)
+    return name
+
+
+# ------------------------------------------------------------------ one round
+def sync_once(connect, db_path, write_lock, backup=False, full=False):
+    """appointments every round (≈20 s); patient list + config when changed; clinical summaries every 3 min; backup daily"""
+    if GATE and not GATE():
+        return {'paused': True}
+    if not _lock.acquire(blocking=False):
+        return {'busy': True}
+    STATE['running'] = True
+    STATE['last_try'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        conn = connect(db_path)
+        try:
+            url, token = config(conn)
+            STATE['enabled'] = bool(url and token)
+            if not STATE['enabled']:
+                return {'enabled': False}
+            res = {'pushed': push_appts(conn, url, token, write_lock), 'pulled': pull(conn, url, token, write_lock)}
+            res['patients'] = push_patients(conn, url, token, write_lock, force=full)
+            res['config'] = push_config(conn, url, token, write_lock)
+            last_c = int(float(meta_get(conn, 'sync_clinical_t', '0') or 0))
+            if full or now_ms() - last_c > 3 * 60 * 1000:
+                res['clinical'] = push_clinical(conn, url, token, write_lock, force=full)
+                with write_lock:
+                    meta_set(conn, 'sync_clinical_t', now_ms())
+                    conn.commit()
+            last_b = int(float(meta_get(conn, 'sync_backup_t', '0') or 0))
+            if backup or now_ms() - last_b > 20 * 3600 * 1000:
+                res['backup'] = upload_backup(db_path, url, token)
+                with write_lock:
+                    meta_set(conn, 'sync_backup_t', now_ms())
+                    meta_set(conn, 'sync_backup_name', res['backup'])
+                    conn.commit()
+            STATE.update(last_ok=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), error=None,
+                         pushed=STATE['pushed'] + res['pushed'], pulled=STATE['pulled'] + res['pulled'],
+                         backup_last=meta_get(conn, 'sync_backup_name'))
+            return res
+        finally:
+            conn.close()
+    except urllib.error.URLError as e:
+        STATE['error'] = 'No internet connection (%s)' % getattr(e, 'reason', e)
+        return {'error': STATE['error']}
+    except Exception as e:
+        STATE['error'] = str(e)
+        return {'error': STATE['error']}
+    finally:
+        STATE['running'] = False
+        _lock.release()
+
+
+def loop(connect, db_path, write_lock, every=20):
+    time.sleep(5)
+    while True:
+        try:
+            sync_once(connect, db_path, write_lock)
+        except Exception as e:      # never let the thread die
+            STATE['error'] = str(e)
+        time.sleep(every)

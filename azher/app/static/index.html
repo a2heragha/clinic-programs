@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>عيادة أزهر وعلي</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <div class="search-wrap">
+    <input id="q" type="search" data-lang="ar" dir="auto" placeholder="ابحث هنا عن اسم او رقم هاتف  (F2)" autocomplete="off">
+    <div id="qres" class="dropdown hidden"></div>
+  </div>
+  <nav>
+    <button data-go="#/today">مواعيد اليوم</button>
+    <button data-go="#/new" class="primary" dir="rtl">+ اضافة مريض</button>
+    <button data-go="#/expenses">المصاريف</button>
+    <button data-go="#/labs">المختبرات</button>
+    <button data-go="#/debts">الديون</button>
+    <button data-go="#/report">التقرير</button>
+    <button data-go="#/review">التكرار <span id="dupBadge" class="badge hidden"></span></button>
+    <button data-go="#/settings">الإعدادات</button>
+    <button id="helpBtn" class="help" title="مساعدة — شرح أجزاء الصفحة">?</button>
+  </nav>
+  <div id="pcBadge" class="pcb hidden" title="الجهاز الذي يعمل عليه البرنامج الآن"></div>
+  <div id="cloud" class="cloud off" title="المزامنة السحابية">☁</div>
+  <div id="net" class="net ok" title="حالة الحفظ">● محفوظ</div>
+  <button id="closeBtn" class="closeb hidden" title="رفع آخر البيانات إلى Google Drive ثم إغلاق البرنامج — ليفتح على الجهاز الآخر">⏻ إغلاق</button>
+</header>
+<div id="roBar" class="robar hidden"></div>
+<main id="view"></main>
+<div id="toast" class="toast hidden"></div>
+<div id="combo" class="dropdown combo hidden"></div>
+<script src="app.js"></script>
+</body>
+</html>
