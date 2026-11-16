@@ -1131,6 +1131,11 @@ class Handler(BaseHTTPRequestHandler):
                 conn.execute('DELETE FROM vocab WHERE kind=? AND name=?', (kind, b.get('name')))
                 return {'ok': True}
         if p0 == 'sync_config' and method == 'PUT':
+            if (b.get('url') or '').strip() != (cloudsync.meta_get(conn, 'sync_url', '') or ''):
+                try:        # another Google script: its hand-over count starts again, so this device uploads its data there
+                    os.remove(os.path.join(os.path.dirname(DB_PATH), 'handoff.json'))
+                except OSError:
+                    pass
             cloudsync.meta_set(conn, 'sync_url', (b.get('url') or '').strip())
             if b.get('token') is not None and str(b.get('token')).strip():
                 cloudsync.meta_set(conn, 'sync_token', str(b['token']).strip())

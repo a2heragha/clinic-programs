@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d4f8a">
+<title>العيادة</title>
+<style>
+:root{--accent:#1d4f8a;--accent-2:#e8f0fa;--line:#e1e6ee;--muted:#6b7785;--ink:#1c2733;--warn:#b4233c;--warn-bg:#fdecef;--ok:#1e7a46;--ok-bg:#e6f5ec;--amber:#8a5a00;--amber-bg:#fff4dc;--violet:#5b3a8c;--violet-bg:#f1eafb;--bg:#f2f5f9;--card:#fff;--shadow:0 1px 2px rgba(16,32,60,.06),0 4px 14px rgba(16,32,60,.06)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,"Segoe UI",Tahoma,Arial,sans-serif;-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+svg.i{width:18px;height:18px;flex:none;vertical-align:-4px}
+/* header */
+header{position:sticky;top:0;z-index:5;background:var(--accent);background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 70%,#000));color:#fff;padding:12px 14px calc(12px);display:flex;align-items:center;gap:10px;box-shadow:0 2px 10px rgba(0,0,0,.15)}
+header .logo{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center}
+header .t{flex:1;min-width:0}
+header b{display:block;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header small{opacity:.8;font-size:12px}
+header button{background:rgba(255,255,255,.16);border:0;color:#fff;border-radius:10px;padding:8px;display:flex;align-items:center;gap:4px;font-size:13px}
+/* bottom tab bar */
+nav.tabs{position:fixed;bottom:0;left:0;right:0;z-index:6;display:flex;background:var(--card);border-top:1px solid var(--line);padding:4px 4px calc(4px + env(safe-area-inset-bottom));box-shadow:0 -2px 12px rgba(16,32,60,.06)}
+nav.tabs button{flex:1;border:0;background:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;font-size:11.5px;font-weight:600;border-radius:12px;position:relative}
+nav.tabs button svg.i{width:22px;height:22px}
+nav.tabs button.on{color:var(--accent);background:var(--accent-2)}
+nav.tabs .bd{position:absolute;top:2px;left:calc(50% - 22px);background:var(--warn);color:#fff;border-radius:9px;font-size:10px;min-width:17px;height:17px;line-height:17px;padding:0 4px}
+main{padding:12px 12px 90px;max-width:760px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px;box-shadow:var(--shadow)}
+h3{margin:0 0 10px;font-size:14px;color:var(--ink);display:flex;align-items:center;gap:7px}
+h3 svg.i{color:var(--accent)}
+h3 .sp{flex:1}
+h3 .n{background:var(--accent-2);color:var(--accent);border-radius:9px;padding:0 8px;font-size:12px}
+input,select,textarea{width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;background:#fff;font-size:16px}
+input:focus,select:focus{outline:2px solid #9cc0ea;outline:2px solid color-mix(in srgb,var(--accent) 35%,#fff);border-color:transparent}
+.row{display:flex;gap:8px;align-items:center}.row>*{flex:1;min-width:0}
+.mt{margin-top:8px}
+button.p{background:var(--accent);color:#fff;border:0;border-radius:11px;padding:12px 14px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+button.s{border:1px solid var(--line);background:#fff;border-radius:10px;padding:7px 10px;font-size:13.5px;display:inline-flex;align-items:center;gap:4px}
+button.s svg.i{width:15px;height:15px}
+button.s.d{color:var(--warn)}button.s.ok{color:var(--ok);border-color:#a6dcbb}button.s.no{color:var(--warn);border-color:#efb7c2}
+button.s.wa{color:#1d9e57;border-color:#a6dcbb}
+button.s.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+.w100{width:100%}
+.muted{color:var(--muted)}.small{font-size:13px}
+.ltr{direction:ltr;unicode-bidi:isolate}
+a{color:var(--accent)}
+/* login */
+.login{max-width:340px;margin:50px auto;text-align:center}
+.login .logo{width:64px;height:64px;border-radius:18px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;margin:0 auto 12px}
+.login .logo svg.i{width:34px;height:34px}
+.login input{text-align:center;font-size:26px;letter-spacing:.35em;margin-top:14px}
+.err{color:var(--warn);min-height:22px;margin-top:8px}
+/* day header */
+.dayh{display:flex;align-items:center;gap:8px}
+.dayh .mid{flex:1;text-align:center}
+.dayh .mid b{font-size:17px}
+.dayh button{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:#fff;display:flex;align-items:center;justify-content:center}
+.wk{display:flex;gap:5px;margin-top:10px}
+.wk button{flex:1;min-width:0;border:1px solid var(--line);background:#fff;border-radius:12px;padding:5px 0;display:flex;flex-direction:column;align-items:center;line-height:1.2}
+.wk small{font-size:10.5px;color:var(--muted)}.wk b{font-size:15px}
+.wk .td{border-color:var(--accent);border-width:1.5px}.wk .td small{color:var(--accent);font-weight:700}
+.wk .on{background:var(--accent);border-color:var(--accent);color:#fff}.wk .on small{color:rgba(255,255,255,.85)}
+.wk .fri:not(.on){background:#f6f8fb}
+.chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:8px}
+.chip{display:inline-flex;align-items:center;gap:4px;border-radius:20px;padding:3px 10px;font-size:12.5px;background:#eef1f5;color:#45505c}
+.chip svg.i{width:14px;height:14px}
+/* appointment cards */
+.appt{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid #eef1f4}
+.appt:last-child{border-bottom:0}
+.appt .n{width:30px;height:30px;border-radius:50%;background:var(--accent-2);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;flex:none;font-size:13px}
+.appt.auto{background:linear-gradient(270deg,var(--violet-bg),transparent 70%);border-radius:12px;padding:12px 8px;margin:4px -8px;border-bottom:0;box-shadow:inset -4px 0 0 #8a63c9}
+html[dir=ltr] .appt.auto{background:linear-gradient(90deg,var(--violet-bg),transparent 70%);box-shadow:inset 4px 0 0 #8a63c9}
+.appt .b{flex:1;min-width:0}
+.appt .nm{font-weight:700;font-size:15.5px}
+.meta{display:flex;flex-wrap:wrap;gap:4px 10px;color:var(--muted);font-size:13px;margin-top:2px}
+.meta span{display:inline-flex;align-items:center;gap:3px}
+.meta svg.i{width:14px;height:14px}
+.act{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
+.st{display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:700;border-radius:20px;padding:3px 10px;background:#eef1f5;color:#45505c}
+.st svg.i{width:13px;height:13px}
+.st-waiting{background:var(--amber-bg);color:var(--amber)}.st-in{background:var(--accent-2);color:var(--accent)}.st-done{background:var(--ok-bg);color:var(--ok)}.st-noshow{background:var(--warn-bg);color:var(--warn)}
+.bg{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;font-weight:700;border-radius:20px;padding:2px 8px}
+.bg svg.i{width:12px;height:12px}
+.bg.auto{background:var(--violet-bg);color:var(--violet)}.bg.c-yes{background:var(--ok-bg);color:var(--ok)}.bg.c-no{background:var(--warn-bg);color:var(--warn)}.bg.c-noans{background:var(--amber-bg);color:var(--amber)}
+.wtl{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:10px;padding:0 0 0 6px;background:#fff;font-size:12.5px;color:var(--muted)}
+html[dir=rtl] .wtl{padding:0 6px 0 0}
+.wtl svg.i{width:15px;height:15px}
+input.wt{width:70px;border:0;padding:6px 4px;font-size:14px;direction:ltr;text-align:center;background:transparent}
+.wtl.ok{border-color:var(--ok);background:var(--ok-bg)}
+.res .it{padding:11px 6px;border-bottom:1px solid #eef1f4;cursor:pointer;border-radius:10px}
+.res .it:hover{background:var(--accent-2)}
+.toast{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);background:#1c2733;color:#fff;padding:10px 16px;border-radius:12px;z-index:50;font-size:14px;max-width:90%;box-shadow:var(--shadow)}
+.toast.e{background:var(--warn)}
+.hidden{display:none!important}
+.flag{display:inline-block;border-radius:8px;padding:3px 9px;margin:2px;font-size:13px}
+.flag.al{background:var(--warn-bg);color:var(--warn);font-weight:700}
+.flag.ch{background:var(--amber-bg);color:var(--amber)}
+.v{border-top:1px solid #eef1f4;padding:10px 0}.v:first-of-type{border-top:0}
+.v .d{font-weight:700;color:var(--accent)}
+.v .k{color:var(--muted);font-size:12px;font-weight:700;margin-right:4px}
+.lab{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:6px 0;border-bottom:1px solid #f0f2f5}
+.hi{color:var(--warn);font-weight:700}.lo{color:#1f5fbf;font-weight:700}
+.imp{font-style:italic}
+.en{direction:ltr;text-align:left}
+.spin{text-align:center;padding:30px;color:var(--muted)}
+.ph{display:flex;align-items:center;gap:12px}
+.av{width:46px;height:46px;border-radius:14px;background:var(--accent-2);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:19px;flex:none}
+.upl{border:1.5px dashed #a9c4e6;display:flex;align-items:center;justify-content:center;gap:6px;text-align:center;background:var(--accent-2);color:var(--accent);border:1.5px dashed color-mix(in srgb,var(--accent) 40%,#fff);border-radius:11px;padding:10px;font-weight:700;cursor:pointer}
+.sheet{position:fixed;inset:0;z-index:40;background:rgba(10,20,35,.45);display:flex;align-items:flex-end;justify-content:center}
+.sheet>div{background:var(--card);width:100%;max-width:760px;max-height:85vh;overflow:auto;border-radius:20px 20px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom))}
+.rl{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #eef1f4}
+.rl:last-child{border-bottom:0}
+.rl .b{flex:1;min-width:0}
+.rl.sent{opacity:.55}
+.empty{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--muted);padding:14px;text-align:center;font-size:14px}
+.empty svg.i{width:30px;height:30px;opacity:.5}
+/* dd/mm/yyyy date boxes */
+.dmy{position:relative;display:flex;align-items:center;gap:4px}
+.dmy>input[type=text]{flex:1;min-width:0;direction:ltr;text-align:center}
+.dmy>input.bad{border-color:var(--warn);background:var(--warn-bg)}
+.dmy-b{border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px;cursor:pointer;flex:none}
+.dmy-h{position:absolute!important;left:0;bottom:0;width:1px!important;height:1px!important;opacity:0;padding:0!important;border:0!important;pointer-events:none}
+</style>
+</head>
+<body>
+<header class="hidden" id="hd"><div class="logo" id="hlogo"></div><div class="t"><b id="ttl"></b><small id="who"></small></div><button id="out"></button></header>
+<main id="view"><div class="spin">…</div></main>
+<nav class="tabs hidden" id="tabs"></nav>
+<script>
+/* ---------------------------------------------------------------- icons */
+const IC = {
+  cal: '<rect x="3" y="4" width="18" height="18" rx="3"/><path d="M8 2v4M16 2v4M3 10h18"/>',
+  phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  add: '<circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6.5 7-6.5s7 2.5 7 6.5M19 8v6M16 11h6"/>',
+  out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+  clinic: '<path d="M3 21h18M5 21V7l7-4 7 4v14"/><path d="M10 10h4M12 8v4M9 21v-5h6v5"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
+  note: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>', x: '<path d="M18 6 6 18M6 6l12 12"/>', undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/>',
+  wa: '<path d="M3 21l1.6-4.7A8.5 8.5 0 1 1 8 19.6z"/><path d="M9 9.5c.3 2.3 2.2 4.4 4.6 5l1.2-1.3 2 .9c-.3 1.2-1.4 1.9-2.6 1.7-3.4-.6-6-3.3-6.5-6.7-.2-1.2.5-2.3 1.7-2.6l.9 2z"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15"/>', edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+  auto: '<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M12 7v5l3 2"/>',
+  hour: '<path d="M6 2h12M6 22h12M7 2v4a5 5 0 0 0 5 5 5 5 0 0 0 5-5V2M7 22v-4a5 5 0 0 1 5-5 5 5 0 0 1 5 5v4"/>',
+  scale: '<path d="M5 21h14a2 2 0 0 0 2-2l-1.5-11a2 2 0 0 0-2-1.7h-11a2 2 0 0 0-2 1.7L3 19a2 2 0 0 0 2 2z"/><path d="M12 10l2.5-2.5"/>',
+  next: '<path d="m9 18 6-6-6-6"/>', prev: '<path d="m15 18-6-6 6-6"/>', send: '<path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/>',
+  heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21.2l8.8-8.8a5.5 5.5 0 0 0 0-7.8z"/>', labs: '<path d="M9 2v7l-5 9a2 2 0 0 0 1.8 3h12.4a2 2 0 0 0 1.8-3l-5-9V2M8 2h8M7 15h10"/>',
+  list: '<path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+};
+const ic = n => `<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${IC[n] || ''}</svg>`;
+/* ---------------------------------------------------------------- helpers */
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pad = n => String(n).padStart(2, '0');
+const todayISO = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+const dmy = iso => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '';
+const ls = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) { } } };
+const norm = s => String(s || '').replace(/[ً-ْـ]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
+  .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/\s+/g, ' ').trim().toLowerCase();
+const digits2 = s => String(s || '').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[٫,]/g, '.').replace(/[^\d.]/g, '');
+const digits = s => String(s || '').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/\D/g, '');
+const DAYS_AR = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'], DAYS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function waNumber(ph) { let d = digits(ph); if (d.startsWith('00')) d = d.slice(2); if (d.startsWith('0') && d.length === 11) d = '964' + d.slice(1); else if (d.length === 10 && d.startsWith('7')) d = '964' + d; return d.length >= 11 ? d : null; }
+function waText(name, date, time) {
+  const t = time ? (() => { const [h, m] = time.split(':').map(Number); return ' الساعة ' + ((h % 12) || 12) + ':' + pad(m) + (h < 12 ? ' صباحاً' : ' مساءً'); })() : '';
+  return (B.wa || 'مرحباً {name}، نذكّركم بموعدكم في {clinic} يوم {day} {date}{time}. يرجى الاتصال بنا إذا تعذّر الحضور.').replace(/\{name\}/g, name || '').replace(/\{clinic\}/g, B.clinic || '')
+    .replace(/\{day\}/g, DAYS_AR[new Date(date + 'T12:00:00').getDay()]).replace(/\{date\}/g, dmy(date)).replace(/\{time\}/g, t);
+}
+function openWa(phone, name, date, time) { const n = waNumber(phone); if (!n) { toast(T('رقم الهاتف غير صالح', 'Not a mobile number'), true); return false; } window.open('https:/' + '/wa.me/' + n + '?text=' + encodeURIComponent(waText(name, date, time)), '_blank'); return true; }
+function toast(m, e) { const t = document.createElement('div'); t.className = 'toast' + (e ? ' e' : ''); t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), e ? 4000 : 2200); }
+let TOK = ls.get('zk_tok'), ME = null, B = null, VIEW = null, timer = null, RC = null;
+const DR = () => ME && ME.role === 'doctor';
+const T = (ar, en) => DR() ? en : ar;
+
+/* the same page runs online (Google Apps Script) and on the clinic computer (m.html on the Wi-Fi) */
+const ONLINE = !!(window.google && google.script && google.script.run);
+if (!ONLINE) TOK = 'local';
+async function lapi(method, url, body) {
+  const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+  let d = null; try { d = await r.json(); } catch (e) { }
+  if (r.status === 401 && !url.endsWith('/login')) throw Object.assign(new Error('LOGIN'), { login: 1 });
+  if (!r.ok) { const m = (d && d.error) || ('Error ' + r.status); throw new Error(/wrong pin/i.test(m) ? 'WRONG' : m); }
+  return d;
+}
+const LOCAL = {
+  apiLogin: async pin => { await lapi('POST', '/api/login', { pin }); return { token: 'local' }; },
+  apiBoot: async () => lapi('GET', '/api/mboot'),
+  apiDay: async (t, date) => ({ rows: await lapi('GET', '/api/mday?date=' + date) }),
+  apiRecall: async () => lapi('GET', '/api/recall'),
+  apiSaveAppt: async (t, a) => {
+    const b = Object.assign({}, a); let uid = b.uid; delete b.uid; delete b.age;
+    if (b.deleted === '1') { await lapi('DELETE', '/api/appt/' + uid); return { uid }; }
+    delete b.deleted; if (b.patient_id === '') b.patient_id = null;
+    if (uid) await lapi('PUT', '/api/appt/' + uid, b); else uid = (await lapi('POST', '/api/appt', b)).id;
+    return { uid: String(uid) };
+  },
+  apiNewPatient: async (t, p) => ({ id: (await lapi('POST', '/api/patient', p)).id }),
+  apiEditPatient: async (t, id, p) => ({ id: (await lapi('PUT', '/api/patient/' + id, p)).id }),
+  apiClinical: async (t, pid) => ({ c: await lapi('GET', '/api/mclin/' + pid) }),
+};
+function rpc(fn, ...args) {
+  if (!ONLINE) return LOCAL[fn].apply(null, args).then(r => Object.assign({ ok: true }, r), e => {
+    if (e.login) { logout(); throw new Error('سجّل الدخول / Sign in'); }
+    throw new Error(e.message === 'Failed to fetch' ? T('لا يوجد اتصال بحاسبة العيادة', 'Clinic computer not reachable') : e.message);
+  });
+  return new Promise((res, rej) => google.script.run.withSuccessHandler(r => {
+    if (r && r.ok) return res(r);
+    if (r && r.error === 'LOGIN') { logout(); return rej(new Error(T('انتهت الجلسة — ادخل مرة أخرى', 'Session ended — sign in again'))); }
+    rej(new Error(r && r.error || 'Error'));
+  }).withFailureHandler(e => rej(new Error(T('لا يوجد اتصال بالإنترنت', 'No connection') + ' (' + (e && e.message || e) + ')'))).call(fn, args));
+}
+const fmtT = t => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return ((h % 12) || 12) + ':' + pad(m || 0) + (DR() ? (h < 12 ? ' AM' : ' PM') : (h < 12 ? ' ص' : ' م')); };
+function slots() { const o = [], [f, t] = B.work || ['13:00', '21:00']; for (let h = 0; h < 24; h++) for (const mm of ['00', '30']) { const x = pad(h) + ':' + mm; if (DR() || (x >= f && x <= t)) o.push(x); } return o; }
+const timeSel = (id, counts = {}, extra = '') => `<select ${id ? `id="${id}"` : ''} ${extra}><option value="">${T('الوقت', 'Time')}</option>${slots().map(t => `<option value="${t}">${fmtT(t)}${counts[t] ? ' (' + counts[t] + ')' : ''}</option>`).join('')}</select>`;
+const ST = { '': ['محجوز', 'Booked', 'cal'], waiting: ['حاضر', 'Waiting', 'user'], in: ['عند الطبيب', 'With doctor', 'heart'], done: ['انتهى', 'Done', 'check'], noshow: ['لم يحضر', 'No-show', 'x'] };
+const stTxt = s => T(ST[s || ''][0], ST[s || ''][1]);
+const CALL = { yes: ['تم الاتصال — يحضر', 'Called — coming'], no: ['تم الاتصال — لن يحضر', 'Called — not coming'], noans: ['لم يرد', 'No answer'] };
+const ageOf = by => by ? (new Date().getFullYear() - +by) : '';
+
+/* ---------------------------------------------------------------- login */
+function logout() { if (!ONLINE && TOK) fetch('/api/logout', { method: 'POST' }).catch(() => { }); ls.set('zk_tok', null); TOK = null; ME = null; clearInterval(timer); showLogin(); }
+function showLogin() {
+  document.documentElement.dir = 'rtl'; document.documentElement.lang = 'ar';
+  $('#hd').classList.add('hidden'); $('#tabs').classList.add('hidden');
+  $('#view').innerHTML = `<div class="login card"><div class="logo">${ic('clinic')}</div><b style="font-size:18px">${esc(ls.get('zk_clinic') || 'العيادة')}</b>
+    <div class="small muted" style="margin-top:6px">اكتب الرقم السري — يتم الدخول تلقائياً<br><span class="ltr">Type your PIN</span></div>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="off"><div class="err" id="err"></div>
+    ${ONLINE ? '' : '<p><a href="/?desktop=1" class="small muted">النسخة الكاملة / Full version</a></p>'}</div>`;
+  const pin = $('#pin'); let seq = 0, et; pin.focus();
+  pin.addEventListener('input', async () => {
+    const v = pin.value, my = ++seq; $('#err').textContent = ''; clearTimeout(et);
+    if (v.length < 4) return;
+    try { const r = await rpc('apiLogin', v); if (my !== seq) return; TOK = r.token; if (ONLINE) ls.set('zk_tok', TOK); boot(); }
+    catch (e) { if (my !== seq) return; if (e.message !== 'WRONG') { $('#err').textContent = e.message; return; }
+      et = setTimeout(() => { if (pin.value === v) $('#err').textContent = 'الرقم السري غير صحيح / Wrong PIN'; }, 1200); }
+  });
+}
+
+/* ---------------------------------------------------------------- start */
+async function boot() {
+  if (!TOK) return showLogin();
+  $('#view').innerHTML = '<div class="spin">…</div>';
+  try { B = await rpc('apiBoot', TOK); } catch (e) { if (TOK) $('#view').innerHTML = `<div class="card err">${esc(e.message)}</div><button class="p w100" onclick="boot()">↻</button>`; return; }
+  ME = B.user; ls.set('zk_clinic', B.clinic); document.title = B.clinic || document.title;
+  try { const th = JSON.parse(B.theme || '{}'); if (/^#[0-9a-f]{6}$/i.test(th.accent || '')) { document.documentElement.style.setProperty('--accent', th.accent); $('meta[name=theme-color]').content = th.accent; } } catch (e) { }
+  document.documentElement.dir = DR() ? 'ltr' : 'rtl'; document.documentElement.lang = DR() ? 'en' : 'ar';
+  $('#hlogo').innerHTML = ic('clinic'); $('#ttl').textContent = B.clinic; $('#who').textContent = ME.name; $('#out').innerHTML = ic('out'); $('#out').title = T('خروج', 'Sign out'); $('#out').onclick = logout;
+  $('#hd').classList.remove('hidden');
+  const tabs = DR() ? [['day', 'Appointments', 'cal'], ['calls', 'Follow-up', 'phone'], ['find', 'Patients', 'search']]
+    : [['day', 'المواعيد', 'cal'], ['calls', 'المتابعة', 'phone'], ['find', 'المرضى', 'search'], ['new', 'مريض جديد', 'add']];
+  $('#tabs').innerHTML = tabs.map(([k, l, i]) => `<button data-t="${k}">${ic(i)}<span>${l}</span>${k === 'calls' ? '<b class="bd hidden" id="rcN"></b>' : ''}</button>`).join(''); $('#tabs').classList.remove('hidden');
+  $$('#tabs button').forEach(b => b.onclick = () => go(b.dataset.t));
+  go('day'); recallCount();
+}
+function go(v, arg) {
+  clearInterval(timer); VIEW = v; window.scrollTo(0, 0);
+  $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === v));
+  if (v === 'day') return day(arg || todayISO());
+  if (v === 'calls') return calls();
+  if (v === 'find') return find();
+  if (v === 'new') return newPatient(arg || {});
+  if (v === 'p') return patient(arg);
+}
+async function recallCount() {
+  try { RC = await rpc('apiRecall', TOK); } catch (e) { return; }
+  const n = RC.calls.filter(r => !r.call).length + RC.hold.length, b = $('#rcN'); if (!b) return;
+  b.textContent = n; b.classList.toggle('hidden', !n);
+}
+
+/* ---------------------------------------------------------------- patient search (list comes once at start) */
+function searchList(q) {
+  const n = norm(q), d = digits(q);
+  if (!n) return [];
+  const words = n.split(' ');
+  return B.patients.filter(p => (d.length >= 3 && digits(p[3]).includes(d)) || words.every(w => norm(p[1]).includes(w))).slice(0, 30);
+}
+function pickRow(p) { return `<div class="it" data-pid="${esc(p[0])}"><b dir="rtl">${esc(p[1])}</b> <span class="muted small">${p[2] ? ageOf(p[2]) + T(' سنة', ' y') : ''}${p[4] ? ' · ' + esc(p[4]) : ''}</span> <span class="small ltr muted">${esc(p[3] || '')}</span>${String(p[0]).startsWith('n:') ? ' <span class="small" style="color:var(--amber)">' + T('جديد', 'new') + '</span>' : ''}</div>`; }
+function patientPicker(inp, box, onPick) {
+  let t;
+  inp.addEventListener('input', () => { clearTimeout(t); onPick(null); t = setTimeout(() => {
+    const r = searchList(inp.value);
+    box.innerHTML = r.length ? `<div class="res">${r.slice(0, 8).map(pickRow).join('')}</div>` : (inp.value.trim() ? `<div class="small muted mt">${T('لا يوجد ملف بهذا الاسم — سيُحجز الموعد بدون ملف، أو سجّل ملفاً جديداً.', 'No file')}</div>` : '');
+    $$('[data-pid]', box).forEach(el => el.onclick = () => { const p = B.patients.find(x => String(x[0]) === el.dataset.pid); inp.value = p[1]; box.innerHTML = ''; onPick(p); });
+  }, 120); });
+}
+
+/* ---------------------------------------------------------------- appointment card (day list) */
+function badges(r) {
+  return (r.kind === 'auto' ? `<span class="bg auto">${ic('auto')}${T('موعد تلقائي', 'Auto')}</span>` : '') + (r.call ? `<span class="bg c-${r.call}">${ic('phone')}${T(CALL[r.call][0], CALL[r.call][1])}</span>` : '');
+}
+function apptCard(r, i, date) {
+  const pid = String(r.patient_id || '');
+  const sec = !DR() && !r.status && r.kind === 'auto' && !r.call;
+  return `<div class="appt${r.kind === 'auto' ? ' auto' : ''}" data-uid="${esc(r.uid)}"><div class="n">${i + 1}</div><div class="b">
+    <div class="nm" dir="rtl" ${pid ? `data-open="${esc(pid)}" style="color:var(--accent);cursor:pointer;text-align:${DR() ? 'left' : 'right'}"` : `style="text-align:${DR() ? 'left' : 'right'}"`}>${esc(r.name || '')}</div>
+    <div class="meta">${r.time ? `<span>${ic('clock')}${esc(fmtT(r.time))}</span>` : ''}${r.age ? `<span>${ic('user')}${esc(r.age)}${T(' سنة', ' y')}</span>` : ''}
+      ${r.phone ? `<span>${ic('phone')}<a class="ltr" href="tel:${esc(r.phone)}">${esc(r.phone)}</a></span>` : ''}${pid ? '' : `<span style="color:var(--amber)">${T('بدون ملف', 'no file')}</span>`}
+      ${DR() && r.weight ? `<span>${ic('scale')}${esc(r.weight)} kg</span>` : ''}${r.note && r.note !== 'موعد تلقائي' ? `<span>${ic('note')}${esc(r.note)}</span>` : ''}</div>
+    <div class="act"><span class="st st-${r.status || ''}">${ic(ST[r.status || ''][2])}${stTxt(r.status)}</span>${badges(r)}</div>
+    ${DR() ? '' : `<div class="act">
+      ${sec ? `<button class="s ok" data-call="yes">${ic('check')}يحضر</button><button class="s no" data-call="no">${ic('x')}لن يحضر</button><button class="s" data-call="noans">${ic('phone')}لم يرد</button>` : ''}
+      ${!r.status ? `<button class="s pri" data-st="waiting">${ic('check')}حضر</button><button class="s" data-st="noshow">لم يحضر</button>` : `<button class="s" data-st="">${ic('undo')}</button>`}
+      <label class="wtl">${ic('scale')}<input class="wt" data-wt="1" inputmode="decimal" placeholder="الوزن" value="${esc(r.weight || '')}"></label>
+      ${r.call === 'no' || r.call === 'noans' || r.status === 'noshow' ? `<button class="s" data-hold="1">${ic('hour')}إلى قائمة الانتظار</button>` : ''}
+      ${r.call && !r.status ? `<button class="s" data-call="" title="تغيير نتيجة الاتصال">${ic('phone')}${ic('undo')}</button>` : ''}
+      ${pid ? '' : `<button class="s" data-reg="1">${ic('add')}تسجيل ملف</button>`}${r.phone ? `<button class="s wa" data-wa="1">${ic('wa')}واتساب</button>` : ''}<button class="s d" data-del="1">${ic('trash')}</button></div>`}
+  </div></div>`;
+}
+
+/* ---------------------------------------------------------------- day list + booking */
+async function day(date) {
+  const v = $('#view');
+  v.innerHTML = '<div class="spin">…</div>';
+  let rows;
+  try { rows = (await rpc('apiDay', TOK, date)).rows; } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  if (VIEW !== 'day') return;
+  const counts = rows.reduce((a, r) => (r.time && (a[r.time] = (a[r.time] || 0) + 1), a), {});
+  const n = s => rows.filter(r => (r.status || '') === s).length;
+  const d = new Date(date + 'T12:00:00');
+  v.innerHTML = `<div class="card"><div class="dayh"><button id="pv">${ic(DR() ? 'prev' : 'next')}</button>
+      <div class="mid"><b>${(DR() ? DAYS_EN : DAYS_AR)[d.getDay()]} ${dmy(date)}</b>${date === todayISO() ? ` <span class="chip" style="padding:1px 8px">${T('اليوم', 'today')}</span>` : ''}</div>
+      <button id="nx">${ic(DR() ? 'next' : 'prev')}</button></div>
+      <div class="wk">${[-3, -2, -1, 0, 1, 2, 3].map(i => { const x = addDays(date, i), dd = new Date(x + 'T12:00:00');
+        return `<button data-day="${x}" class="${i === 0 ? 'on' : ''}${x === todayISO() ? ' td' : ''}${dd.getDay() === 5 ? ' fri' : ''}"><small>${(DR() ? DAYS_EN : DAYS_AR)[dd.getDay()].replace('ال', '').slice(0, DR() ? 3 : 5)}</small><b>${x.slice(8)}</b></button>`; }).join('')}</div>
+      <div class="chips"><span class="chip">${ic('list')}${rows.length} ${T('مريض', 'patients')}</span><span class="chip st-waiting">${ic('user')}${n('waiting')} ${T('حاضر', 'waiting')}</span><span class="chip st-done">${ic('check')}${n('done')} ${T('انتهى', 'done')}</span>${rows.filter(r => r.kind === 'auto').length ? `<span class="chip bg auto">${ic('auto')}${rows.filter(r => r.kind === 'auto').length} ${T('تلقائي', 'auto')}</span>` : ''}</div>
+      ${date !== todayISO() ? `<button class="s w100 mt" id="td" style="justify-content:center">${ic('sun')}${T('العودة إلى اليوم', 'Back to today')}</button>` : ''}</div>
+    ${DR() ? '' : `<div class="card"><h3>${ic('add')}حجز موعد</h3>
+      <input id="an" placeholder="اسم المريض (ابحث أو اكتب اسماً جديداً)" autocomplete="off"><div id="as"></div>
+      <div class="row mt"><input id="ap" type="tel" inputmode="tel" placeholder="رقم الهاتف" class="ltr">${timeSel('at', counts)}</div>
+      <input id="ao" class="mt" placeholder="ملاحظة">
+      <div class="row mt"><button class="p" id="aa">${ic('check')}إضافة إلى ${date === todayISO() ? 'قائمة اليوم' : dmy(date)}</button><button class="s" id="anew" style="flex:0 0 auto">${ic('add')}ملف جديد</button></div></div>`}
+    <div class="card"><h3>${ic('cal')}${T('المواعيد', 'Appointments')}<span class="sp"></span>${DR() ? '' : `<button class="s wa" id="remT">${ic('wa')}تذكير مواعيد ${date === todayISO() ? 'الغد' : dmy(addDays(date, 1))}</button>`}</h3>
+      ${rows.length ? rows.map((r, i) => apptCard(r, i, date)).join('') : `<div class="empty">${ic('cal')}${T('لا توجد مواعيد.', 'No appointments.')}</div>`}</div>`;
+  $('#pv').onclick = () => day(addDays(date, -1)); $('#nx').onclick = () => day(addDays(date, 1));
+  $$('.wk [data-day]').forEach(b => b.onclick = () => day(b.dataset.day));
+  let sx = null; v.firstElementChild.addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });   // swipe the date card to change day
+  v.firstElementChild.addEventListener('touchend', e => { if (sx == null) return; const dx = e.changedTouches[0].clientX - sx; sx = null; if (Math.abs(dx) > 60) day(addDays(date, (dx > 0) === !DR() ? 1 : -1)); });
+  const td = $('#td'); if (td) td.onclick = () => day(todayISO());
+  $$('[data-open]').forEach(el => el.onclick = () => go('p', el.dataset.open));
+  if (!DR()) {
+    let picked = null;
+    patientPicker($('#an'), $('#as'), p => { picked = p; if (p) { $('#ap').value = p[3] || ''; } });
+    $('#aa').onclick = async () => {
+      const name = $('#an').value.trim(); if (!name) return toast('اكتب اسم المريض', true);
+      $('#aa').disabled = true;
+      try { await rpc('apiSaveAppt', TOK, { date, time: $('#at').value, patient_id: picked ? String(picked[0]) : '', name, phone: $('#ap').value.trim(), note: $('#ao').value.trim(), age: picked && picked[2] ? String(ageOf(picked[2])) : '' }); toast('تمت الإضافة'); day(date); }
+      catch (e) { toast(e.message, true); $('#aa').disabled = false; }
+    };
+    $('#anew').onclick = () => go('new', { name: $('#an').value.trim(), phone: $('#ap').value.trim(), book: date, time: $('#at').value });
+    $('#remT').onclick = () => reminders(addDays(date, 1));
+    $$('.appt').forEach(el => {
+      const r = rows.find(x => x.uid === el.dataset.uid), save = async (a, msg) => { try { await rpc('apiSaveAppt', TOK, Object.assign({ uid: r.uid }, a)); if (msg) toast(msg); day(date); recallCount(); } catch (e) { toast(e.message, true); } };
+      $$('[data-st]', el).forEach(b => b.onclick = () => save({ status: b.dataset.st }));
+      $$('[data-call]', el).forEach(b => b.onclick = () => save({ call: b.dataset.call }));
+      const hb = $('[data-hold]', el); if (hb) hb.onclick = () => save({ hold: '1' }, 'نُقل إلى قائمة الانتظار');
+      const del = $('[data-del]', el); if (del) del.onclick = () => { if (confirm('حذف موعد ' + r.name + '؟')) save({ deleted: '1' }); };
+      const wa = $('[data-wa]', el); if (wa) wa.onclick = () => { if (openWa(r.phone, r.name, date, r.time)) rpc('apiSaveAppt', TOK, { uid: r.uid, reminded: String(Date.now()) }).catch(() => { }); };
+      const reg = $('[data-reg]', el); if (reg) reg.onclick = () => go('new', { name: r.name, phone: r.phone, appt: r.uid });
+      const wt = $('[data-wt]', el);
+      wt.onchange = async () => { const w = digits2(wt.value); if (w !== '' && !(+w >= 2 && +w <= 300)) return toast('الوزن بين 2 و 300 كغم', true);
+        wt.value = w; try { await rpc('apiSaveAppt', TOK, { uid: r.uid, weight: w }); r.weight = w; wt.parentNode.classList.add('ok'); toast('تم حفظ الوزن'); } catch (e) { toast(e.message, true); } };
+      wt.onkeydown = e => { if (e.key === 'Enter') wt.blur(); };
+    });
+  }
+  timer = setInterval(() => { if (VIEW === 'day' && !document.activeElement.matches('input,select,textarea') && !$('.sheet')) day(date); }, 45000);
+}
+
+/* ---------------------------------------------------------------- WhatsApp reminders for one day (bottom sheet, one tap per patient) */
+async function reminders(date) {
+  let rows; try { rows = (await rpc('apiDay', TOK, date)).rows.filter(r => r.status !== 'noshow'); } catch (e) { return toast(e.message, true); }
+  if (!rows.length) return toast('لا توجد مواعيد يوم ' + dmy(date));
+  const sh = document.createElement('div'); sh.className = 'sheet';
+  sh.innerHTML = `<div><h3>${ic('wa')}تذكير مواعيد ${DAYS_AR[new Date(date + 'T12:00:00').getDay()]} ${dmy(date)}<span class="sp"></span><button class="s" data-x>${ic('x')}</button></h3>
+    <div class="small muted" style="margin-bottom:6px">اضغط «إرسال التالي»: يفتح واتساب والرسالة جاهزة، أرسلها ثم ارجع واضغط مرة أخرى.</div>
+    ${rows.map(r => `<div class="rl${r.reminded ? ' sent' : ''}" data-u="${esc(r.uid)}"><div class="b"><b>${esc(r.name)}</b><div class="meta">${r.time ? `<span>${ic('clock')}${fmtT(r.time)}</span>` : ''}<span class="ltr">${esc(r.phone || '—')}</span></div></div>
+      <span class="small st-done st ok-mark ${r.reminded ? '' : 'hidden'}">${ic('check')}أُرسل</span>${waNumber(r.phone) ? `<button class="s wa" data-one>${ic('send')}</button>` : '<span class="small muted">لا يوجد رقم</span>'}</div>`).join('')}
+    <button class="p w100 mt" id="wnx">${ic('wa')}إرسال التالي</button></div>`;
+  document.body.appendChild(sh);
+  const close = () => sh.remove();
+  sh.onclick = e => { if (e.target === sh || e.target.closest('[data-x]')) close(); const b = e.target.closest('[data-one]'); if (b) send(b.closest('.rl')); };
+  const send = el => { const r = rows.find(x => x.uid === el.dataset.u); if (!openWa(r.phone, r.name, date, r.time)) return; r.reminded = String(Date.now()); el.classList.add('sent'); $('.ok-mark', el).classList.remove('hidden'); rpc('apiSaveAppt', TOK, { uid: r.uid, reminded: r.reminded }).catch(() => { }); };
+  $('#wnx', sh).onclick = () => { const el = $$('.rl', sh).find(x => !x.classList.contains('sent') && $('[data-one]', x)); if (!el) { toast('تم إرسال كل التذكيرات'); return close(); } send(el); };
+}
+
+/* ---------------------------------------------------------------- follow-up: calls to make + waiting list */
+async function calls() {
+  const v = $('#view'); v.innerHTML = '<div class="spin">…</div>';
+  try { RC = await rpc('apiRecall', TOK); } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  if (VIEW !== 'calls') return;
+  recallCount();
+  const day7 = d => `${(DR() ? DAYS_EN : DAYS_AR)[new Date(d + 'T12:00:00').getDay()]} ${dmy(d)}`;
+  const nm = r => r.patient_id ? `<b data-open="${esc(r.patient_id)}" style="color:var(--accent);cursor:pointer" dir="rtl">${esc(r.name)}</b>` : `<b dir="rtl">${esc(r.name)}</b>`;
+  v.innerHTML = `<div class="card" style="border-top:4px solid #8a63c9"><h3>${ic('phone')}${T('اتصالات المتابعة', 'Calls to make')}<span class="n">${RC.calls.length}</span></h3>
+      <div class="small muted" style="margin-top:-6px;margin-bottom:6px">${T('مواعيد تلقائية من تاريخ المراجعة الذي يكتبه الطبيب — خلال 7 أيام', 'Automatic appointments from the follow-up date — next 7 days')}</div>
+      ${RC.calls.length ? RC.calls.map(r => `<div class="rl" data-u="${esc(r.uid)}"><div class="b">${nm(r)}<div class="meta"><span>${ic('cal')}${day7(r.date)}</span>${r.phone ? `<span>${ic('phone')}<a class="ltr" href="tel:${esc(r.phone)}">${esc(r.phone)}</a></span>` : ''}${r.call === 'noans' ? `<span class="bg c-noans">${T('لم يرد', 'no answer')}</span>` : ''}</div>
+          ${DR() ? '' : `<div class="act"><button class="s ok" data-call="yes">${ic('check')}يحضر</button><button class="s no" data-call="no">${ic('x')}لن يحضر</button><button class="s" data-call="noans">لم يرد</button>${r.phone ? `<button class="s wa" data-wa>${ic('wa')}</button>` : ''}</div>`}</div></div>`).join('')
+        : `<div class="empty">${ic('check')}${T('لا توجد اتصالات — كل المواعيد التلقائية مؤكدة', 'Nothing to call')}</div>`}</div>
+    <div class="card" style="border-top:4px solid #c98a1d"><h3>${ic('hour')}${T('قائمة الانتظار', 'Waiting list')}<span class="n">${RC.hold.length}</span></h3>
+      <div class="small muted" style="margin-top:-6px;margin-bottom:6px">${T('مرضى يحتاجون موعداً جديداً', 'Patients to give a new date')}</div>
+      ${RC.hold.length ? RC.hold.map(r => `<div class="rl" data-u="${esc(r.uid)}"><div class="b">${nm(r)}<div class="meta"><span>${T('كان', 'was')} ${dmy(r.date)}</span>${r.call ? `<span class="bg c-${r.call}">${T(CALL[r.call][0], CALL[r.call][1])}</span>` : ''}${r.status === 'noshow' ? `<span class="bg c-no">${T('لم يحضر', 'no-show')}</span>` : ''}${r.phone ? `<span>${ic('phone')}<a class="ltr" href="tel:${esc(r.phone)}">${esc(r.phone)}</a></span>` : ''}</div>
+          ${DR() ? '' : `<div class="row mt"><input type="date" data-nd value="${addDays(todayISO(), 1)}">${timeSel('', {}, 'data-nt')}</div>
+          <div class="act"><button class="s pri" data-book>${ic('cal')}حجز</button>${r.phone ? `<button class="s wa" data-wa>${ic('wa')}</button>` : ''}<button class="s d" data-rm>${ic('trash')}</button></div>`}</div></div>`).join('')
+        : `<div class="empty">${ic('hour')}${T('القائمة فارغة. من لا يحضر يمكن نقله إلى هنا من قائمة المواعيد.', 'Empty')}</div>`}</div>`;
+  $$('[data-open]', v).forEach(el => el.onclick = () => go('p', el.dataset.open));
+  if (DR()) return;
+  $$('.rl', v).forEach(el => {
+    const r = RC.calls.concat(RC.hold).find(x => x.uid === el.dataset.u), save = async (a, msg) => { try { await rpc('apiSaveAppt', TOK, Object.assign({ uid: r.uid }, a)); if (msg) toast(msg); calls(); } catch (e) { toast(e.message, true); } };
+    $$('[data-call]', el).forEach(b => b.onclick = () => save({ call: b.dataset.call }));
+    const wa = $('[data-wa]', el); if (wa) wa.onclick = () => openWa(r.phone, r.name, r.date, r.time);
+    const bk = $('[data-book]', el); if (bk) bk.onclick = () => { const nd = $('[data-nd]', el).value; if (!nd) return toast('اختر التاريخ', true); save({ date: nd, time: $('[data-nt]', el).value, hold: '0', call: 'yes', status: '' }, 'تم الحجز ' + dmy(nd)); };
+    const rm = $('[data-rm]', el); if (rm) rm.onclick = () => { if (confirm('حذف ' + r.name + ' من قائمة الانتظار؟')) save({ deleted: '1' }); };
+  });
+}
+
+/* ---------------------------------------------------------------- patients */
+function find() {
+  $('#view').innerHTML = `<div class="card"><h3>${ic('search')}${T('البحث عن مريض', 'Find a patient')}</h3><input id="q" placeholder="${T('ابحث بالاسم أو رقم الهاتف', 'Search by name (Arabic) or phone')}" dir="auto" autocomplete="off"><div id="qr"></div>
+    <div class="small muted mt">${B.patients.length} ${T('ملف', 'files')}</div></div>`;
+  const q = $('#q'); q.focus();
+  q.oninput = () => { const r = searchList(q.value); $('#qr').innerHTML = `<div class="res">${r.map(pickRow).join('')}</div>`; $$('#qr [data-pid]').forEach(el => el.onclick = () => go('p', el.dataset.pid)); };
+}
+async function patient(pid) {
+  const v = $('#view'), p = B.patients.find(x => String(x[0]) === String(pid)) || [pid, '', '', '', '', ''];
+  const head = `<div class="card"><div class="ph"><div class="av">${esc((p[1] || '?').trim().charAt(0))}</div><div style="flex:1;min-width:0">
+      <div style="font-size:18px;font-weight:700;text-align:${DR() ? 'left' : 'right'}" dir="rtl">${esc(p[1])}</div>
+      <div class="meta">${p[2] ? `<span>${ic('user')}${ageOf(p[2])}${T(' سنة', ' y')}</span>` : ''}${p[4] ? `<span dir="rtl">${esc(p[4])}</span>` : ''}${p[5] ? `<span>${ic('cal')}${T('آخر زيارة ', 'last visit ')}${dmy(p[5])}</span>` : ''}</div></div></div>
+    ${p[3] ? `<div class="act"><a class="s" style="text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:7px 10px;display:inline-flex;gap:4px;align-items:center" href="tel:${esc(p[3])}">${ic('phone')}<span class="ltr">${esc(p[3])}</span></a>${waNumber(p[3]) ? `<a class="s wa" style="text-decoration:none;border:1px solid #a6dcbb;border-radius:10px;padding:7px 10px;display:inline-flex;gap:4px;align-items:center;color:#1d9e57" target="_blank" href="${'https:/' + '/wa.me/'}${waNumber(p[3])}">${ic('wa')}</a>` : ''}</div>` : ''}
+    ${DR() ? '' : `<div class="row mt" style="background:var(--accent-2);border-radius:12px;padding:8px"><label class="wtl" style="flex:1;font-size:14px">${ic('scale')}الوزن اليوم<input class="wt" id="pwt" inputmode="decimal" placeholder="كغم" style="flex:1"></label><button class="s pri" id="pwts" style="flex:0 0 auto">${ic('check')}حفظ الوزن</button></div>
+      <h3 class="mt">${ic('cal')}حجز موعد</h3><div class="row"><input type="date" id="bd" value="${todayISO()}">${timeSel('bt')}</div>
+      <input id="bn" class="mt" placeholder="ملاحظة"><button class="p w100 mt" id="bok">${ic('check')}حجز</button>`}
+    ${!ONLINE && !DR() ? `<div class="row mt"><button class="s" id="ped" style="justify-content:center;padding:10px">${ic('edit')}تعديل البيانات</button><label class="upl">${ic('camera')}رفع فحص<input type="file" id="up" accept="${'image/' + '*,application/pdf'}" multiple hidden></label></div>` : ''}</div>`;
+  if (!DR()) {
+    v.innerHTML = head + (String(pid).startsWith('n:') ? '<div class="card small muted">ملف جديد — يظهر رقمه بعد المزامنة مع حاسبة العيادة.</div>' : '');
+    if (!ONLINE) {
+      $('#ped').onclick = async () => { try { const d = await lapi('GET', '/api/patient/' + pid); go('new', { edit: pid, p: d.patient }); } catch (e) { toast(e.message, true); } };
+      $('#up').onchange = async e => {
+        const fs = Array.from(e.target.files); if (!fs.length) return; toast('جارٍ الرفع…');
+        for (const f of fs) { try { const pl = await payload(f); await lapi('POST', '/api/file', Object.assign(pl, { patient_id: +pid, date: todayISO(), name: f.name, title: '' })); } catch (er) { toast(er.message, true); } }
+        toast('تم إرفاق ' + fs.length + ' ملف');
+      };
+    }
+    $('#pwts').onclick = async () => {   // weight taken by the secretary → today's appointment (and the visit) — added to today's list if not there
+      const w = digits2($('#pwt').value); if (!(+w >= 2 && +w <= 300)) return toast('الوزن بين 2 و 300 كغم', true);
+      try {
+        const rows = (await rpc('apiDay', TOK, todayISO())).rows, a = rows.find(r => String(r.patient_id) === String(pid));
+        if (a) await rpc('apiSaveAppt', TOK, { uid: a.uid, weight: w });
+        else await rpc('apiSaveAppt', TOK, { date: todayISO(), patient_id: String(pid), name: p[1], phone: p[3], age: p[2] ? String(ageOf(p[2])) : '', status: 'waiting', weight: w });
+        toast(a ? 'تم حفظ الوزن' : 'تم حفظ الوزن وأُضيف إلى قائمة اليوم'); $('#pwt').parentNode.classList.add('ok');
+      } catch (e) { toast(e.message, true); }
+    };
+    $('#bok').onclick = async () => { try { await rpc('apiSaveAppt', TOK, { date: $('#bd').value, time: $('#bt').value, note: $('#bn').value, patient_id: String(pid), name: p[1], phone: p[3], age: p[2] ? String(ageOf(p[2])) : '' }); toast('تم الحجز'); go('day', $('#bd').value); } catch (e) { toast(e.message, true); } };
+    return;
+  }
+  v.innerHTML = head + '<div class="spin">…</div>';
+  let c;
+  try { c = (await rpc('apiClinical', TOK, String(pid))).c; } catch (e) { v.innerHTML = head + `<div class="card err">${esc(e.message)}</div>`; return; }
+  if (VIEW !== 'p') return;
+  if (!c) { v.innerHTML = head + '<div class="card muted">No clinical summary uploaded yet for this file.</div>'; return; }
+  const labName = Object.fromEntries((B.labs || []).map(l => [l[0], l])), cls = (code, val) => { const t = labName[code]; if (!t) return ''; return t[4] != null && t[4] !== '' && val > t[4] ? 'hi' : t[3] != null && t[3] !== '' && val < t[3] ? 'lo' : ''; };
+  const smk = { never: 'Non-smoker', current: 'Smoker', ex: 'Ex-smoker' }[c.sm] || '';
+  v.innerHTML = head + `<div class="card en">
+      <div class="meta">${c.g === 'M' ? '<span>Male</span>' : c.g === 'F' ? '<span>Female</span>' : ''}${c.oc ? '<span dir="rtl">' + esc(c.oc) + '</span>' : ''}${smk ? '<span>' + smk + '</span>' : ''}${c.ht ? '<span>Ht ' + esc(c.ht) + ' cm</span>' : ''}<span>${c.nv} visits${c.first ? ' since ' + dmy(c.first) : ''}</span>${c.nf ? '<span>' + c.nf + ' files (open on the clinic PC)</span>' : ''}</div>
+      <div class="mt">${c.al.length ? c.al.map(x => `<span class="flag al">⚠ ${esc(x)}</span>`).join('') : '<span class="small muted">No known allergies recorded</span>'}</div>
+      ${c.ch.length ? `<div class="mt">${c.ch.map(x => `<span class="flag ch">${esc(x)}</span>`).join('')}</div>` : ''}
+      ${c.lm.length ? `<div class="mt small"><b>Regular meds:</b> ${c.lm.map(esc).join(' · ')}</div>` : ''}</div>
+    ${Object.keys(c.l).length ? `<div class="card en"><h3>${ic('labs')}Labs (latest · trend)</h3>${Object.keys(c.l).map(k => { const a = c.l[k], last = a[a.length - 1], t = labName[k];
+        return `<div class="lab"><div><b>${esc(t ? t[1] : k)}</b> <span class="small muted">${esc(t ? t[2] : '')}</span><div class="small muted">${a.map(x => `<span class="${x[2] ? 'imp' : ''}">${x[1]}</span>`).join(' → ')}</div></div>
+          <div style="text-align:right"><span class="${cls(k, last[1])} ${last[2] ? 'imp' : ''}">${last[1]}</span><div class="small muted">${dmy(last[0])}</div></div></div>`; }).join('')}
+      <div class="small muted mt"><i>Italic</i> = extracted from the old program's notes.</div></div>` : ''}
+    <div class="card en"><h3>${ic('list')}Visits</h3>${c.v.map(x => `<div class="v"><div class="d">${dmy(x.d)}${x.bp ? ` <span class="small muted" style="font-weight:400">BP ${esc(x.bp)}${x.hr ? ' · PR ' + x.hr : ''}${x.sp ? ' · SpO₂ ' + x.sp : ''}${x.we ? ' · Wt ' + x.we : ''}${x.rb ? ' · RBS ' + x.rb : ''}</span>` : ''}</div>
+        ${x.dx ? `<div><b>${esc(x.dx).replace(/\n/g, ' · ')}</b></div>` : ''}
+        ${x.c ? `<div class="small"><span class="k">S</span>${esc(x.c)}</div>` : ''}${x.e ? `<div class="small"><span class="k">O</span>${esc(x.e)}</div>` : ''}${x.pl ? `<div class="small"><span class="k">P</span>${esc(x.pl)}</div>` : ''}
+        ${x.n ? `<div class="small" style="white-space:pre-wrap;color:#33475e">${esc(x.n)}</div>` : ''}
+        ${x.m ? `<div class="small" style="color:#33475e;margin-top:3px">${x.m.map(m => '℞ ' + esc(m)).join('<br>')}</div>` : ''}
+        ${x.fu ? `<div class="small muted">Follow-up ${dmy(x.fu)}</div>` : ''}</div>`).join('') || '<div class="muted">No visits.</div>'}</div>`;
+}
+
+/* ---------------------------------------------------------------- new / edit patient (secretary) */
+function newPatient(pre) {
+  const by = new Date().getFullYear(), e0 = pre.p || {};
+  $('#view').innerHTML = `<div class="card"><h3>${ic(pre.edit ? 'edit' : 'add')}${pre.edit ? 'تعديل بيانات المريض' : 'تسجيل مريض جديد'}</h3>
+    <input id="nn" placeholder="الاسم الكامل" value="${esc(e0.name || pre.name || '')}">
+    <div class="row mt"><select id="ng"><option value="">الجنس</option><option value="M"${e0.gender === 'M' ? ' selected' : ''}>ذكر</option><option value="F"${e0.gender === 'F' ? ' selected' : ''}>أنثى</option></select>
+      <input id="ny" type="number" inputmode="numeric" placeholder="سنة الميلاد" min="1900" max="${by}" value="${esc(e0.birth_year || '')}"></div>
+    <div class="small muted" id="nya"></div>
+    <input id="np" class="mt ltr" type="tel" inputmode="tel" placeholder="رقم الهاتف" value="${esc(e0.phone || pre.phone || '')}">
+    <input id="na" class="mt" placeholder="السكن" list="areas" value="${esc(e0.address || '')}"><datalist id="areas">${B.areas.map(a => `<option value="${esc(a)}">`).join('')}</datalist>
+    <input id="no" class="mt" placeholder="العمل" list="occs" value="${esc(e0.occupation || '')}"><datalist id="occs">${B.occupations.map(a => `<option value="${esc(a)}">`).join('')}</datalist>
+    ${pre.edit ? '' : `<label class="wtl mt" style="display:flex;font-size:14px">${ic('scale')}الوزن اليوم (اختياري)<input class="wt" id="nw" inputmode="decimal" placeholder="كغم" style="flex:1"></label>`}
+    <div id="dup" class="small mt" style="color:var(--amber)"></div>
+    <button class="p w100 mt" id="ns">${ic('check')}${pre.edit ? 'حفظ التعديل' : pre.book ? 'حفظ وحجز الموعد' : pre.appt ? 'حفظ وربط الموعد' : 'حفظ'}</button></div>`;
+  $('#ny').oninput = () => { const y = +$('#ny').value; $('#nya').textContent = y > 1900 && y <= by ? 'العمر ' + (by - y) + ' سنة' : ''; };
+  const dupCheck = () => { const r = searchList($('#nn').value).filter(p => norm(p[1]) === norm($('#nn').value) && String(p[0]) !== String(pre.edit || '')); $('#dup').textContent = r.length ? '⚠ يوجد ملف بنفس الاسم' + (r[0][3] ? ' (' + r[0][3] + ')' : '') + ' — تأكد أنه ليس نفس المريض.' : ''; };
+  $('#nn').oninput = dupCheck; dupCheck();
+  $('#ns').onclick = async () => {
+    const p = { name: $('#nn').value.trim(), gender: $('#ng').value, birth_year: $('#ny').value, phone: $('#np').value.trim(), address: $('#na').value.trim(), occupation: $('#no').value.trim() };
+    if (!p.name) return toast('اكتب الاسم', true);
+    $('#ns').disabled = true;
+    try {
+      if (pre.edit) {
+        await rpc('apiEditPatient', TOK, pre.edit, p);
+        const x = B.patients.find(q => String(q[0]) === String(pre.edit)); if (x) Object.assign(x, [x[0], p.name, p.birth_year, p.phone, p.address, x[5]]);
+        toast('تم الحفظ'); return go('p', pre.edit);
+      }
+      const r = await rpc('apiNewPatient', TOK, p);
+      B.patients.push([r.id, p.name, p.birth_year, p.phone, p.address, '']);
+      const age = p.birth_year ? String(ageOf(p.birth_year)) : '';
+      if (pre.book) await rpc('apiSaveAppt', TOK, { date: pre.book, time: pre.time || '', patient_id: r.id, name: p.name, phone: p.phone, age });
+      if (pre.appt) await rpc('apiSaveAppt', TOK, { uid: pre.appt, patient_id: r.id, name: p.name, phone: p.phone, age });
+      const nw = digits2(($('#nw') || {}).value);
+      if (nw && +nw >= 2 && +nw <= 300) {
+        if (pre.appt) await rpc('apiSaveAppt', TOK, { uid: pre.appt, weight: nw });
+        else if (pre.book === todayISO()) { const a = (await rpc('apiDay', TOK, todayISO())).rows.find(x => String(x.patient_id) === String(r.id)); if (a) await rpc('apiSaveAppt', TOK, { uid: a.uid, weight: nw }); }
+        else await rpc('apiSaveAppt', TOK, { date: todayISO(), patient_id: String(r.id), name: p.name, phone: p.phone, age, status: 'waiting', weight: nw });
+      }
+      toast('تم الحفظ'); go(pre.book || pre.appt ? 'day' : 'p', pre.book || r.id);
+    } catch (e) { toast(e.message, true); $('#ns').disabled = false; }
+  };
+}
+
+async function payload(f) {   // photos are shrunk before upload (clinic computer only)
+  if (!f.type.startsWith('image/') || f.type === 'image/heic') {
+    const buf = new Uint8Array(await f.arrayBuffer()); let bin = ''; for (let i = 0; i < buf.length; i += 32768) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 32768));
+    return { mime: f.type || 'application/pdf', data: btoa(bin) };
+  }
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(f); });
+  const k = Math.min(1, 2200 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+  c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return { mime: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.85).split(',')[1] };
+}
+/* every date box shows and accepts day/month/year (dd/mm/yyyy) whatever the language of Windows / the phone;
+   the real <input type=date> stays hidden underneath, so .value is still yyyy-mm-dd for the program */
+(function () {
+  const D = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  const p2 = n => String(n).padStart(2, '0');
+  const fmt = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v.slice(8, 10) + '/' + v.slice(5, 7) + '/' + v.slice(0, 4) : '';
+  const parse = t => {
+    const m = String(t || '').trim().replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).match(/^(\d{1,2})\D+(\d{1,2})\D+(\d{2}|\d{4})$/) ||
+      String(t || '').trim().replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).match(/^(\d{2})(\d{2})(\d{4})$/);
+    if (!m) return null;
+    let y = +m[3]; if (y < 100) y += 2000;
+    const d = new Date(y, +m[2] - 1, +m[1]);
+    if (d.getMonth() !== +m[2] - 1 || d.getDate() !== +m[1]) return null;
+    return y + '-' + p2(m[2]) + '-' + p2(m[1]);
+  };
+  function enhance(inp) {
+    if (inp.dataset.dmy) return; inp.dataset.dmy = '1';
+    const w = document.createElement('span'), t = document.createElement('input'), b = document.createElement('button');
+    w.className = 'dmy'; if (inp.getAttribute('style')) w.setAttribute('style', inp.getAttribute('style'));
+    t.type = 'text'; t.className = inp.className; t.placeholder = 'dd/mm/yyyy'; t.inputMode = 'numeric'; t.autocomplete = 'off'; t.dir = 'ltr'; t.setAttribute('data-lang', 'en');
+    if (inp.title) t.title = inp.title;
+    b.type = 'button'; b.className = 'dmy-b'; b.tabIndex = -1; b.title = 'Calendar'; b.textContent = '📅';
+    inp.parentNode.insertBefore(w, inp); w.append(t, b, inp); inp.classList.add('dmy-h'); inp.tabIndex = -1;
+    const show = () => { t.value = fmt(D.get.call(inp)); t.classList.remove('bad'); };
+    Object.defineProperty(inp, 'value', { configurable: true, get() { return D.get.call(inp); }, set(v) { D.set.call(inp, v); show(); } });
+    Object.defineProperty(inp, 'disabled', { configurable: true, get() { return t.disabled; }, set(v) { t.disabled = b.disabled = !!v; } });
+    inp.focus = () => t.focus();
+    show();
+    const fire = () => { inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true })); };
+    inp.addEventListener('change', show);
+    const commit = () => {
+      if (!t.value.trim()) { if (D.get.call(inp)) { D.set.call(inp, ''); fire(); } return true; }
+      const v = parse(t.value);
+      if (!v) { t.classList.add('bad'); return false; }
+      t.classList.remove('bad'); t.value = fmt(v);
+      if (v !== D.get.call(inp)) { D.set.call(inp, v); fire(); }
+      return true;
+    };
+    t.addEventListener('input', () => {        // 09112026 → 09/11/2026 while typing
+      const d = t.value.replace(/[٠-٩]/g, x => '٠١٢٣٤٥٦٧٨٩'.indexOf(x));
+      if (/^\d{8}$/.test(d)) t.value = d.slice(0, 2) + '/' + d.slice(2, 4) + '/' + d.slice(4);
+      if (/^\d{1,2}\D\d{1,2}\D\d{4}$/.test(t.value)) commit();
+    });
+    t.addEventListener('change', commit);
+    t.addEventListener('blur', () => { if (!commit()) setTimeout(show, 1500); });
+    t.addEventListener('keydown', e => { if (e.key === 'Enter') commit(); });
+    b.onclick = () => { try { inp.showPicker(); } catch (e) { t.focus(); } };
+  }
+  const scan = () => document.querySelectorAll('input[type=date]:not([data-dmy])').forEach(enhance);
+  new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true });
+  scan();
+})();
+
+boot();
+</script>
+</body>
+</html>

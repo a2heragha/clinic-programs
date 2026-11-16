@@ -1042,6 +1042,11 @@ class Handler(BaseHTTPRequestHandler):
                 conn.execute('UPDATE appointments SET deleted=1, updated_at=? WHERE id=?', (cloudsync.now_ms(), pid))
                 return {'ok': True}
         if p0 == 'sync_config' and method == 'PUT':
+            if (b.get('url') or '').strip() != (cloudsync.meta_get(conn, 'sync_url', '') or ''):
+                try:        # another Google script: its hand-over count starts again, so this device uploads its data there
+                    os.remove(os.path.join(os.path.dirname(DB_PATH), 'handoff.json'))
+                except OSError:
+                    pass
             cloudsync.meta_set(conn, 'sync_url', (b.get('url') or '').strip())
             if b.get('token') is not None:
                 cloudsync.meta_set(conn, 'sync_token', (b.get('token') or '').strip())

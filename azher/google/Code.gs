@@ -49,7 +49,7 @@ function setup() {
     folder = folderIn_(clinic, 'النسخ الاحتياطية');
     props.setProperty('BACKUP_FOLDER', folder.getId());
   }
-  try { DriveApp.getFileById(ScriptApp.getScriptId()).moveTo(clinic); } catch (e) { }
+  try { DriveApp.getFileById(ScriptApp.getScriptId()).moveTo(folderIn_(null, ROOT_FOLDER)); } catch (e) { }   // the script itself stays outside the shared folder
   VIEWERS.filter(v => v.indexOf('@') > 0).forEach(v => { try { clinic.addViewer(v); } catch (e) { Logger.log('مشاركة ' + v + ': ' + e); } });
   Logger.log('تم الإعداد ✓');
   Logger.log('رمز المزامنة: ' + token);
