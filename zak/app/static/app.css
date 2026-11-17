@@ -112,7 +112,7 @@ table.t td.num{text-align:right;font-variant-numeric:tabular-nums}
 .soap{display:grid;grid-template-columns:62px 1fr;gap:6px 8px;align-items:start;margin-top:10px}
 .soap .k{font-weight:800;font-size:18px;color:var(--accent);text-align:center;padding-top:4px}
 .soap .k small{display:block;font-size:9px;font-weight:600;color:var(--muted);letter-spacing:.02em}
-.meds .m{display:flex;gap:6px;align-items:center;margin-bottom:4px}
+.meds .m{display:flex;gap:6px;align-items:center;margin-bottom:2px}
 .meds .m .n{width:20px;color:var(--muted);text-align:right}
 .meds .m input{flex:1;direction:auto}
 .meds .m button{padding:2px 8px}

@@ -1110,7 +1110,7 @@ function printDoc(date, body, opts = {}) {
     .a{position:absolute}
     .body{position:absolute;overflow:hidden}
     .rx{font-size:1.9em;font-weight:700;font-family:Georgia,serif;margin:0 0 2mm}
-    ol{margin:0;padding-left:6mm}ol li{margin:0 0 2.6mm;padding-left:1mm}
+    ol{margin:0;padding-left:6mm}ol li{margin:0 0 1mm;padding-left:1mm}
     h1{font-size:1.2em;text-align:center;margin:0 0 4mm}
     p{margin:0 0 2.5mm;white-space:pre-wrap}
     .sig{margin-top:8mm;text-align:${opts.rtl ? 'left' : 'right'};direction:rtl;font-weight:700}
