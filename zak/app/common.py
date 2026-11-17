@@ -100,6 +100,43 @@ VISIT_TPLS = [
 ]
 
 
+_LATIN = re.compile(r'(?<![µμ])[a-z]+')     # µg stays µg
+
+
+def drug_caps(s):
+    """drug lines in capitals: only the Latin letters change (Arabic instructions, numbers and µ stay as they are)"""
+    return _LATIN.sub(lambda m: m.group(0).upper(), str(s or ''))
+
+
+def caps_all_drugs(conn):
+    """one time: every drug already in the database in capitals (prescriptions, suggestions, ready prescriptions, regular medicines)"""
+    import json
+    for vid, seq, line in conn.execute('SELECT id, seq, line FROM visit_meds').fetchall():
+        if line and drug_caps(line) != line:
+            conn.execute('UPDATE visit_meds SET line=? WHERE id=?', (drug_caps(line), vid))
+    for did, line, uses in conn.execute('SELECT id, line, uses FROM drugs').fetchall():
+        up = drug_caps(line)
+        if up == line:
+            continue
+        ex = conn.execute('SELECT id FROM drugs WHERE line=? AND id<>?', (up, did)).fetchone()
+        if ex:                                   # the capital form exists already: merge the use counts
+            conn.execute('UPDATE drugs SET uses=uses+? WHERE id=?', (uses or 0, ex[0]))
+            conn.execute('DELETE FROM drugs WHERE id=?', (did,))
+        else:
+            conn.execute('UPDATE drugs SET line=? WHERE id=?', (up, did))
+    for tid, lines in conn.execute('SELECT id, lines FROM rx_templates').fetchall():
+        try:
+            ls = json.loads(lines or '[]')
+        except ValueError:
+            continue
+        up = [drug_caps(x) for x in ls]
+        if up != ls:
+            conn.execute('UPDATE rx_templates SET lines=? WHERE id=?', (json.dumps(up, ensure_ascii=False), tid))
+    for pid, lm in conn.execute("SELECT id, long_meds FROM patients WHERE COALESCE(long_meds,'')<>''").fetchall():
+        if drug_caps(lm) != lm:
+            conn.execute('UPDATE patients SET long_meds=? WHERE id=?', (drug_caps(lm), pid))
+
+
 def init_schema(conn):
     with open(os.path.join(HERE, 'schema.sql'), encoding='utf-8') as f:
         conn.executescript(f.read())
@@ -144,6 +181,9 @@ def init_schema(conn):
         conn.execute('INSERT OR IGNORE INTO lab_tests(code,name,unit,low,high,target,grp,seq) VALUES(?,?,?,?,?,?,?,?)', t + (i,))
     for k, v in DEFAULT_META.items():
         conn.execute('INSERT OR IGNORE INTO meta(k,v) VALUES(?,?)', (k, v))
+    if not conn.execute("SELECT 1 FROM meta WHERE k='drugs_caps_done'").fetchone():
+        caps_all_drugs(conn)
+        conn.execute("INSERT INTO meta(k,v) VALUES('drugs_caps_done','1')")
     conn.commit()
 
 

@@ -15,7 +15,7 @@ if updater.boot(HERE, os.path.join(ROOT, 'config.json')) and __name__ == '__main
     import subprocess
     sys.exit(subprocess.call([sys.executable] + sys.argv))      # run the updated program
 import relink
-from common import norm_name, norm_phone, connect, init_schema, hash_pin, check_pin
+from common import norm_name, norm_phone, connect, init_schema, hash_pin, check_pin, drug_caps
 import cloudsync
 import features
 import handoff
@@ -213,6 +213,8 @@ def save_patient(conn, pid, b, user):
             v = num(v)
         elif k == 'dob':
             v = iso(v)
+        elif k == 'long_meds':
+            v = drug_caps(v)
         elif k == 'gender':
             v = v if v in ('M', 'F') else None
         else:
@@ -380,7 +382,7 @@ def save_visit(conn, vid, b):
     if 'meds' in b:
         old = set(r[0] for r in conn.execute('SELECT line FROM visit_meds WHERE visit_id=?', (vid,)))
         conn.execute('DELETE FROM visit_meds WHERE visit_id=?', (vid,))
-        for i, line in enumerate(x.strip() for x in (b.get('meds') or [])):
+        for i, line in enumerate(drug_caps(x).strip() for x in (b.get('meds') or [])):
             if line:
                 conn.execute('INSERT INTO visit_meds(visit_id,seq,line) VALUES(?,?,?)', (vid, i, line))
                 if line not in old:
@@ -1062,7 +1064,7 @@ class Handler(BaseHTTPRequestHandler):
             return {'ok': True}
         if p0 == 'template':
             if method in ('POST', 'PUT'):
-                lines = json.dumps([x.strip() for x in (b.get('lines') or []) if x.strip()], ensure_ascii=False)
+                lines = json.dumps([drug_caps(x).strip() for x in (b.get('lines') or []) if x.strip()], ensure_ascii=False)
                 fd = num(b.get('follow_days'), int) if str(b.get('follow_days') or '').strip() else None
                 vals = ((b.get('name') or 'Template').strip(), lines, s(b.get('diagnosis')), s(b.get('plan')), s(b.get('complaint')), s(b.get('exam')), fd)
                 if method == 'POST':
@@ -1076,7 +1078,7 @@ class Handler(BaseHTTPRequestHandler):
             v = re.sub(r'\s+', ' ', str(b.get('value') or '')).strip()
             if v:
                 if b.get('kind') == 'drug':
-                    conn.execute('INSERT OR IGNORE INTO drugs(line) VALUES(?)', (v,))
+                    conn.execute('INSERT OR IGNORE INTO drugs(line) VALUES(?)', (drug_caps(v),))
                 else:
                     conn.execute('INSERT OR IGNORE INTO diagnoses(name) VALUES(?)', (v,))
             return {'ok': True}
