@@ -650,6 +650,7 @@ function openVisit(vid) {
       <div class="k">O<small>Exam</small></div><textarea data-k="exam" rows="2" data-lang="en" dir="auto" placeholder="Examination findings">${esc(x.exam || '')}</textarea>
       <div class="k">A<small>Diagnosis</small></div><div><textarea data-k="diagnosis" rows="2" data-lang="en" placeholder="One diagnosis per line (suggestions appear while typing)" style="font-weight:600">${esc(x.diagnosis || '')}</textarea></div>
       <div class="k">P<small>Plan</small></div><textarea data-k="plan" rows="2" data-lang="en" dir="auto" placeholder="Plan, investigations, advice">${esc(x.plan || '')}</textarea>
+      <div class="k" style="font-size:13px">Im<small>Imaging</small></div><textarea data-k="imaging" rows="2" data-lang="en" dir="auto" placeholder="X-ray, ultrasound, CT, MRI, echo — date and findings">${esc(x.imaging || '')}</textarea>
       ${x.notes || x.legacy ? `<div class="k" style="font-size:13px">N<small>Notes</small></div><div>${x.legacy && x.notes ? `<button class="small" type="button" id="togNotes">Show original old note</button>` : ''}<textarea data-k="notes" id="notesTa" rows="${Math.min(10, Math.max(3, (x.notes || '').split('\n').length + 1))}" data-lang="en" dir="auto" style="${x.legacy && x.notes ? 'display:none;margin-top:6px;background:var(--amber-bg)' : ''}">${esc(x.notes || '')}</textarea></div>` : ''}
     </div>
     <div class="card" style="margin:12px 0 0;background:var(--card-2)">

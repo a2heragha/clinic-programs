@@ -324,7 +324,7 @@ def patient_full(conn, pid, user):
 
 
 # ------------------------------------------------------------------ visits
-VISIT_TEXT = ['complaint', 'exam', 'diagnosis', 'plan', 'notes']
+VISIT_TEXT = ['complaint', 'exam', 'diagnosis', 'plan', 'imaging', 'notes']
 VISIT_INT = ['bp_sys', 'bp_dia', 'hr', 'rr', 'spo2']
 VISIT_REAL = ['temp', 'weight', 'height', 'rbs', 'price', 'waist']
 
@@ -789,7 +789,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not d:
                     raise ApiError('Patient not found', 404)
                 v = dict(next((x for x in d['visits'] if x['id'] == int(b.get('visit_id') or 0)), {}))
-                v.update({k: b[k] for k in ('complaint', 'exam', 'diagnosis', 'plan', 'bp_sys', 'bp_dia', 'hr', 'temp', 'spo2', 'rbs', 'weight', 'waist', 'meds') if k in b})
+                v.update({k: b[k] for k in ('complaint', 'exam', 'diagnosis', 'plan', 'imaging', 'bp_sys', 'bp_dia', 'hr', 'temp', 'spo2', 'rbs', 'weight', 'waist', 'meds') if k in b})
                 return features.ai_plan(m.get('ai_key'), m.get('ai_model_plan') or features.PLAN_MODEL, d, v, d.get('family'))
             if p0 == 'ai_summary':
                 d = patient_full(conn, int(b.get('patient_id') or 0), user)

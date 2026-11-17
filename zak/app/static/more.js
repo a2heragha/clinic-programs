@@ -202,7 +202,7 @@ function exportFile() {
     ${vs.map(x => `<div class="v"><b class="d">${dmy(x.date)}</b> <small>${vit(x)}</small>
       ${x.diagnosis ? `<div><span class="k">A</span><b>${esc(x.diagnosis).replace(/\n/g, ' · ')}</b></div>` : ''}
       ${x.complaint ? `<div><span class="k">S</span>${esc(x.complaint)}</div>` : ''}${x.exam ? `<div><span class="k">O</span>${esc(x.exam)}</div>` : ''}
-      ${x.plan ? `<div><span class="k">P</span>${esc(x.plan)}</div>` : ''}${!x.complaint && !x.exam && x.notes ? `<div style="white-space:pre-wrap">${esc(x.notes)}</div>` : ''}
+      ${x.plan ? `<div><span class="k">P</span>${esc(x.plan)}</div>` : ''}${x.imaging ? `<div><span class="k">Im</span>${esc(x.imaging)}</div>` : ''}${!x.complaint && !x.exam && x.notes ? `<div style="white-space:pre-wrap">${esc(x.notes)}</div>` : ''}
       ${(x.meds || []).length ? `<div><span class="k">℞</span>${x.meds.map(esc).join(' · ')}</div>` : ''}${x.follow_up ? `<div><small>Follow-up ${dmy(x.follow_up)}</small></div>` : ''}</div>`).join('')}
     <p style="margin-top:8mm;text-align:right"><b>${esc(m.doctor_name || '')}</b></p></body></html>`;
   const f = document.createElement('iframe'); f.style.cssText = 'position:fixed;width:0;height:0;border:0;right:0;bottom:0'; document.body.appendChild(f);

@@ -156,6 +156,7 @@ def init_schema(conn):
     add('appointments', 'visit_id', 'INTEGER')
     add('appointments', 'reminded', 'INTEGER')               # WhatsApp reminder sent (ms)
     add('visits', 'waist', 'REAL')
+    add('visits', 'imaging', 'TEXT')                       # X-ray / US / CT / MRI / echo findings
     add('visits', 'fee_type', "TEXT DEFAULT ''")            # '' paid · review · free
     add('rx_templates', 'complaint', 'TEXT')
     add('rx_templates', 'exam', 'TEXT')

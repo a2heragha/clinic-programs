@@ -403,7 +403,7 @@ def summary_prompt(pdata):
              'Regular meds: ' + (p.get('long_meds') or '').replace('\n', '; ')]
     for v in pdata['visits'][:15][::-1]:
         parts = ['VISIT %s' % v['date']]
-        for k, lab in (('complaint', 'S'), ('exam', 'O'), ('diagnosis', 'A'), ('plan', 'P')):
+        for k, lab in (('complaint', 'S'), ('exam', 'O'), ('diagnosis', 'A'), ('plan', 'P'), ('imaging', 'Imaging')):
             if v.get(k):
                 parts.append('%s: %s' % (lab, v[k].replace('\n', '; ')[:700]))
         if v.get('bp_sys'):
@@ -451,7 +451,7 @@ def ai_plan(key, model, pdata, visit, family=None):
     prev = [v for v in pdata['visits'] if v['id'] != visit.get('id')][:6]
     for v in prev[::-1]:
         parts = ['PREVIOUS VISIT %s' % v['date']]
-        for k, lab in (('complaint', 'S'), ('exam', 'O'), ('diagnosis', 'A'), ('plan', 'P')):
+        for k, lab in (('complaint', 'S'), ('exam', 'O'), ('diagnosis', 'A'), ('plan', 'P'), ('imaging', 'Imaging')):
             if v.get(k):
                 parts.append('%s: %s' % (lab, v[k].replace('\n', '; ')[:500]))
         if not v.get('complaint') and v.get('notes'):
@@ -465,7 +465,7 @@ def ai_plan(key, model, pdata, visit, family=None):
     for k, lab in (('bp_sys', 'BP sys'), ('bp_dia', 'BP dia'), ('hr', 'Pulse'), ('temp', 'Temp'), ('spo2', 'SpO2'), ('rbs', 'RBS'), ('weight', 'Weight kg'), ('waist', 'Waist cm')):
         if visit.get(k) not in (None, ''):
             cur.append('%s %s' % (lab, visit[k]))
-    for k, lab in (('complaint', 'Complaint'), ('exam', 'Exam'), ('diagnosis', 'Diagnosis so far'), ('plan', 'Plan so far')):
+    for k, lab in (('complaint', 'Complaint'), ('exam', 'Exam'), ('diagnosis', 'Diagnosis so far'), ('plan', 'Plan so far'), ('imaging', 'Imaging')):
         if (visit.get(k) or '').strip():
             cur.append('%s: %s' % (lab, visit[k].strip().replace('\n', '; ')))
     if visit.get('meds'):
