@@ -269,20 +269,12 @@ def ai_call(key, model, content, max_tokens=2000, system=None):
     return ''.join(b.get('text', '') for b in res.get('content', []) if b.get('type') == 'text')
 
 
-def ai_tool(key, model, content, schema, max_tokens=4000, system=None):
-    """ask for an answer in a fixed structure: the API returns it already parsed (tool use), so no JSON text can be malformed"""
-    if not key:
-        raise RuntimeError('No AI key — add it in Settings → AI features')
-    body = {'model': model or DEFAULT_MODEL, 'max_tokens': max_tokens, 'messages': [{'role': 'user', 'content': content}],
-            'tools': [{'name': 'answer', 'description': 'Give the answer in this structure.', 'input_schema': schema}],
-            'tool_choice': {'type': 'tool', 'name': 'answer'}}
-    if system:
-        body['system'] = system
+def _post(body, key):
     req = urllib.request.Request(API_URL, data=json.dumps(body).encode('utf-8'), method='POST',
                                  headers={'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'})
     try:
         with urllib.request.urlopen(req, timeout=180) as r:
-            res = json.loads(r.read().decode('utf-8'))
+            return json.loads(r.read().decode('utf-8'))
     except urllib.error.HTTPError as e:
         try:
             msg = json.loads(e.read().decode('utf-8')).get('error', {}).get('message')
@@ -291,9 +283,38 @@ def ai_tool(key, model, content, schema, max_tokens=4000, system=None):
         raise RuntimeError('AI service error %s: %s' % (e.code, msg or e.reason))
     except urllib.error.URLError as e:
         raise RuntimeError('No internet connection to the AI service (%s)' % e.reason)
+
+
+NO_FORCED_TOOL = set()     # models that refused tool_choice "tool" (asked with "auto" from then on)
+
+
+def ai_tool(key, model, content, schema, max_tokens=4000, system=None):
+    """ask for an answer in a fixed structure (tool use): it comes back already parsed, so no JSON text can be malformed.
+    Models that cannot be forced to use a tool get tool_choice "auto" + an instruction; a text answer is still read as JSON."""
+    if not key:
+        raise RuntimeError('No AI key — add it in Settings → AI features')
+    body = {'model': model or DEFAULT_MODEL, 'max_tokens': max_tokens, 'messages': [{'role': 'user', 'content': content}],
+            'tools': [{'name': 'answer', 'description': 'Give the complete answer in this structure. Always use this tool to answer.', 'input_schema': schema}],
+            'tool_choice': {'type': 'tool', 'name': 'answer'}}
+    if system:
+        body['system'] = system
+    try:
+        if body['model'] in NO_FORCED_TOOL:
+            raise RuntimeError('tool_choice')
+        res = _post(body, key)
+    except RuntimeError as e:
+        if 'tool_choice' not in str(e):
+            raise
+        NO_FORCED_TOOL.add(body['model'])
+        body['tool_choice'] = {'type': 'auto'}
+        body['system'] = (system + ' ' if system else '') + 'Answer only by calling the "answer" tool once, with every field filled.'
+        res = _post(body, key)
     for b in res.get('content', []):
         if b.get('type') == 'tool_use' and isinstance(b.get('input'), dict):
             return b['input']
+    txt = ''.join(b.get('text', '') for b in res.get('content', []) if b.get('type') == 'text')
+    if txt.strip():
+        return parse_json(txt, key, model)
     if res.get('stop_reason') == 'max_tokens':
         raise RuntimeError('The AI answer was too long — try again')
     raise RuntimeError('The AI gave no answer (%s) — try again' % (res.get('stop_reason') or '?'))
