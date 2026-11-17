@@ -409,19 +409,20 @@ html.arui .daybar .dchip i{right:auto;left:-5px}
 .flag.noall{background:var(--ok-bg);color:var(--ok);border:1px solid #b9dfc3;font-weight:600}
 .pbtns{display:flex;gap:4px;flex:none}
 .pbtns button{padding:4px 9px;font-size:12.5px;border-radius:16px}
-.ptabs{display:grid;grid-template-columns:168px minmax(0,1fr) 320px;gap:8px;align-items:stretch;height:calc(100vh - var(--ptop,170px));min-height:420px}
+.ptabs{display:grid;grid-template-columns:138px minmax(0,1fr);gap:8px;align-items:start}
 .ptabs>*{min-height:0}
-.ptnav{margin:0;overflow:auto;padding:6px}
+.ptnav{margin:0;padding:5px;position:sticky;top:58px}
+.ptsep{font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--muted);border-top:1px solid var(--line,#e3e8ef);margin:6px 2px 2px;padding-top:6px}
 .ptnav .pnew{justify-content:center;margin-bottom:6px;background:linear-gradient(135deg,#2c7a3f,#1f5f30);border:0;color:#fff;font-weight:700;border-radius:10px;padding:9px}
-.ptnav button{position:relative;border-radius:8px;padding:8px 10px;font-size:13.5px}
+.ptnav button{position:relative;border-radius:8px;padding:6px 7px;font-size:13px;gap:6px}
 .ptnav .pte{font-style:normal;font-size:17px;width:22px;text-align:center}
 .ptnav .ptn{margin-left:auto;font-size:11px;font-weight:700;color:var(--muted);background:#eef2f7;border-radius:9px;padding:0 6px}
 .ptnav .ptn:empty{display:none}
 .ptnav button.on .ptn{color:var(--accent);background:#fff}
-.ptmain{overflow:auto;min-height:0}
+.ptmain{min-width:0}
+.ptmain [data-pane=visit]>.card{margin:0 0 8px}
+.ptmain .due:empty{display:none}
 .ptmain>[data-pane]>.card{margin:0}
-.pside{overflow:auto;min-height:0}
-.pside .card{margin-bottom:8px}
 /* visit */
 .vcard{margin:0;padding:8px 10px;display:flex;flex-direction:column;gap:6px;min-height:100%}
 .vhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -436,31 +437,27 @@ html.arui .daybar .dchip i{right:auto;left:-5px}
 .vrow.vitals label{font-size:10.5px;white-space:nowrap;overflow:hidden}
 .vrow.vitals input{font-size:14px;padding:3px 2px;border-radius:8px;background:#f8fafc}
 .vcard .chips{margin-top:0}
-.vbody2{display:grid;grid-template-columns:230px minmax(0,1fr);gap:8px;flex:1;min-height:0}
-.stabs{display:flex;flex-direction:column;gap:3px;overflow:auto}
-.st{display:flex;align-items:center;gap:8px;text-align:left;padding:4px 8px;border-radius:10px;border:1px solid transparent;border-left:4px solid var(--sfc);background:var(--sfb);cursor:pointer;min-height:38px;color:var(--text,#1c2b3a)}
-.st i{font-style:normal;font-size:19px;width:24px;text-align:center;flex:none}
-.st span{display:flex;flex-direction:column;min-width:0}
-.st b{font-size:13px;color:var(--sfc)}
-.st .stp{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
-.st.done .stp{color:#2b3a4a}
-.st.done b::after{content:' ✓';color:var(--ok)}
-.st:hover{filter:brightness(.97)}
-.st.on{background:#fff;border-color:var(--sfc);box-shadow:0 3px 12px rgba(16,32,60,.12);transform:translateX(3px)}
-.st-s,.sf-s{--sfc:#2f6fb1;--sfb:#f1f6fc}.st-o,.sf-o{--sfc:#0f8a78;--sfb:#eff9f7}.st-a,.sf-a{--sfc:#b4233c;--sfb:#fdf2f4}.st-p,.sf-p{--sfc:#7a4fc4;--sfb:#f6f2fd}.st-i,.sf-i{--sfc:#c27a0f;--sfb:#fdf7ee}.st-r,.sf-r{--sfc:#1d4f8a;--sfb:#eef4fb}.st-n,.sf-n{--sfc:#8a96a3;--sfb:#f5f6f8}
-.spanes{min-height:0;display:flex}
-.spane{display:none;flex:1;flex-direction:column;gap:6px;min-height:0;border-radius:12px;padding:8px 10px;background:var(--sfb);border:1px solid var(--sfc);border-top-width:4px}
-.spane.on{display:flex;animation:spin .14s ease}
-@keyframes spin{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:none}}
-.sph{font-size:15px;color:var(--sfc);display:flex;align-items:center;gap:6px}
-.sph small{margin-left:auto;color:var(--muted);font-size:11px}
-.spane>textarea{flex:1;min-height:150px;resize:none;font-size:15px;line-height:1.55;border-radius:9px;background:#fff;padding:10px 12px}
+.vstick{position:sticky;top:50px;z-index:6;background:var(--card,#fff);margin:0 -10px;padding:5px 10px 6px;border-bottom:1px solid #e6ecf3;box-shadow:0 6px 10px -8px rgba(16,32,60,.25)}
+.kchips{margin-top:5px!important;gap:5px}
+.kchips .chip{font-size:12.5px;border-radius:14px;padding:3px 10px}
+.kchips .chip.ghost{background:transparent;border:1px dashed #c5d0dc;color:var(--muted)}
+.vtop{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.vtop button{border-radius:16px;padding:5px 12px;font-size:13px}
+.vtop button.primary{box-shadow:0 2px 8px rgba(29,79,138,.25)}
+.vbody{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:8px;align-items:start}
+.soap2{display:flex;flex-direction:column;gap:5px}
+.sf{display:grid;grid-template-columns:60px 1fr;gap:6px;align-items:stretch;border-radius:9px;padding:3px;background:var(--sfb);border-left:4px solid var(--sfc)}
+.sf-s{--sfc:#2f6fb1;--sfb:#f1f6fc}.sf-o{--sfc:#0f8a78;--sfb:#eff9f7}.sf-a{--sfc:#b4233c;--sfb:#fdf2f4}.sf-p{--sfc:#7a4fc4;--sfb:#f6f2fd}.sf-i{--sfc:#c27a0f;--sfb:#fdf7ee}.sf-n{--sfc:#8a96a3;--sfb:#f5f6f8}
+.sk{display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;font-size:16px;color:var(--sfc)}
+.sk b{font-size:15px}.sk small{font-size:9.5px;color:var(--muted);font-weight:600}
+.sv textarea{field-sizing:content;min-height:52px;max-height:340px;resize:vertical;border-radius:7px;border-color:transparent;background:#fff;font-size:14px;line-height:1.5}
+.sv textarea:focus{box-shadow:0 4px 14px rgba(29,79,138,.12)}
+.rxcol{display:flex;flex-direction:column;gap:5px;border-radius:10px;padding:6px 8px;background:linear-gradient(180deg,#f3f7fd,#fff);border:1px solid #d7e3f2;position:sticky;top:58px}
 .rxhead{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
-.rxhead b{font-size:15px;color:var(--accent)}
+.rxhead b{font-size:14.5px;color:var(--accent)}
 .rxhead .sp{flex:1}
-.rxhead select{font-size:12.5px;padding:2px 4px;max-width:170px}
-.sf-r .meds{flex:1;overflow:auto;min-height:60px}
-.sf-r .meds .m input{font-size:14.5px;padding:5px 8px;border-radius:7px}
+.rxhead select{font-size:12.5px;padding:2px 4px;max-width:160px}
+.rxcol .meds .m input{font-size:14px;padding:4px 7px;border-radius:7px}
 .fu{display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-size:12.5px}
 .fu label{display:inline-flex;align-items:center;gap:4px;color:var(--muted)}
 .fu input{font-size:12.5px;padding:2px 4px}
@@ -469,29 +466,21 @@ html.arui .daybar .dchip i{right:auto;left:-5px}
 .vact button.primary{box-shadow:0 2px 8px rgba(29,79,138,.25)}
 .vempty{text-align:center;padding:40px 10px;font-size:16px;color:var(--muted);line-height:1.8}
 /* AI suggestions open as a panel over the right column instead of pushing the visit down */
-#aiPlanBox:not(:empty){position:fixed;z-index:40;right:12px;top:calc(var(--ptop,170px) - 4px);bottom:10px;width:min(760px,62vw);overflow:auto;border-radius:12px;box-shadow:0 16px 48px rgba(16,32,60,.28);background:var(--card)}
+#aiPlanBox:not(:empty){margin-top:8px}
 #aiPlanBox .aip{margin:0;border-radius:12px}
-@media (max-width:1250px){.ptabs{grid-template-columns:150px minmax(0,1fr);height:auto}.ptabs .pside{grid-column:1 / -1}.vrow.vitals{grid-template-columns:repeat(5,minmax(0,1fr))}.phd{flex-wrap:wrap}}
+@media (max-width:1250px){.vrow.vitals{grid-template-columns:repeat(5,minmax(0,1fr))}.vbody{grid-template-columns:1fr}.rxcol{position:static}.phd{flex-wrap:wrap}}
 @media (max-width:820px){.ptabs{grid-template-columns:1fr}.ptnav{flex-direction:row;overflow-x:auto}}
 html.dark .phd{background:var(--card)}
-html.dark .spane,html.dark .st{background:rgba(255,255,255,.04)}
-html.dark .spane>textarea,html.dark .st.on{background:var(--card)}
+html.dark .sf{background:rgba(255,255,255,.04)}
+html.dark .sv textarea,html.dark .rxcol{background:var(--card)}
 
 /* language switch next to medication lines */
 .langb{min-width:34px;padding:2px 6px;font-weight:700}
 .langb.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 
-/* patient screen: tabs on the left · open tab · fixed right column */
-.ptabs{display:grid;grid-template-columns:200px minmax(0,1fr) 360px;gap:10px;align-items:start}
-.ptnav{position:sticky;top:52px}
-.ptnav .pnew{justify-content:center;margin-bottom:6px;background:var(--accent);color:#fff;font-weight:700}
-.ptnav button{position:relative}
-.ptnav .ptn{margin-left:auto;font-size:11px;font-weight:700;color:var(--muted)}
-.ptnav button.on .ptn{color:#fff}
-.pside{position:sticky;top:52px;max-height:calc(100vh - 64px);overflow:auto}
 .vlist.wide .v{display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:baseline}
 .vlist.wide .v .x{white-space:normal}
-@media (max-width:1250px){.ptabs{grid-template-columns:180px minmax(0,1fr)}.ptabs .pside{grid-column:1 / -1;position:static;max-height:none}}
+@media (max-width:1250px){.ptabs{grid-template-columns:138px minmax(0,1fr)}}
 @media (max-width:820px){.ptabs{grid-template-columns:1fr}.ptnav{position:static;flex-direction:row;overflow-x:auto}}
 
 /* drug names are kept in capitals (the server stores them so) */

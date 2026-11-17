@@ -30,8 +30,7 @@
   /* ---------- grids become one column */
   .pgrid,.ptabs,.split,.split.ps,.sgrid,.rgrid,.aigrid,.calcs,.settings-grid{grid-template-columns:1fr!important}
   .ptabs{height:auto!important}.ptabs .pside,.ptmain{position:static;max-height:none;overflow:visible}
-  .vrow.vitals{grid-template-columns:repeat(5,minmax(0,1fr))!important}.vbody2{grid-template-columns:1fr!important}.stabs{flex-direction:row;overflow-x:auto}.st{min-width:150px}.spane>textarea{min-height:200px}.phd{flex-wrap:wrap}
-  #aiPlanBox:not(:empty){position:static!important;width:auto!important;box-shadow:none}
+  .vrow.vitals{grid-template-columns:repeat(5,minmax(0,1fr))!important}.vbody{grid-template-columns:1fr!important}.rxcol,.ptnav,.vstick{position:static!important}.phd{flex-wrap:wrap}
   .tabsview{grid-template-columns:1fr;gap:8px}
   .tabsview>*,.split>*,.sgrid>*,.pgrid>*,.ptabs>*,.rgrid>*,#setPane,#calcPane,#regPane{min-width:0;max-width:100%}
   .vtabs{position:static;flex-direction:row;overflow-x:auto;max-height:none;padding:4px;gap:4px;-webkit-overflow-scrolling:touch}

@@ -521,7 +521,7 @@ function ptShow(k) {
 function ptFit() {
   const t = $('.ptabs'); if (!t) return;
   const top = t.getBoundingClientRect().top + window.scrollY;
-  document.documentElement.style.setProperty('--ptop', Math.max(120, Math.round(top + 10)) + 'px');
+  document.documentElement.style.setProperty('--ptop', Math.max(120, Math.round(top + 10)) + 'px'); // kept for the layout of other panels
 }
 window.addEventListener('resize', () => ptFit());
 function ptCounts() {
@@ -560,16 +560,21 @@ async function viewPatient(v, pid, params) {
     <nav class="vtabs card ptnav">
       <button class="primary pnew" id="newV" title="Alt+N">➕ <span>New visit</span></button>
       ${PT_TABS.map(([k, l, e]) => `<button data-pt="${k}"><i class="pte">${e}</i><span>${l}</span><b class="ptn" id="ptn_${k}"></b></button>`).join('')}
+      <div class="ptsep">Print &amp; tools</div>
+      <button id="pSum" title="Arabic summary of this visit for the patient"><i class="pte">📝</i><span>Summary</span></button>
+      <button id="pRep" title="Medical report"><i class="pte">📄</i><span>Report</span></button>
+      <button id="pRef" title="Referral letter"><i class="pte">↗️</i><span>Referral</span></button>
+      <button id="pSick" title="Sick leave"><i class="pte">🛌</i><span>Sick leave</span></button>
+      <button id="toCalc" title="Calculators"><i class="pte">🧮</i><span>Calculators</span></button>
     </nav>
     <div class="ptmain">
-      <div data-pane="visit"><div id="vedit"></div></div>
+      <div data-pane="visit"><div class="card due" id="dueCard"></div><div class="card sum" id="summary"></div><div id="vedit"></div></div>
       <div data-pane="hist"><div class="card"><h3>All visits<span class="sp"></span><span class="muted small" style="text-transform:none">click a visit to open it</span></h3><div class="vlist wide" id="vlist"></div></div></div>
       <div data-pane="labs"><div class="card" id="labsCard"></div></div>
       <div data-pane="files"><div class="card" id="filesCard"></div></div>
       <div data-pane="wt"><div class="card" id="wtCard"></div></div>
       <div data-pane="fam"><div class="card" id="famHx"></div></div>
     </div>
-    <div class="side pside"><div class="card due" id="dueCard"></div><div class="card sum" id="summary"></div></div>
   </div></div>`;
   $$('[data-pt]').forEach(b => b.onclick = () => ptShow(b.dataset.pt));
   if (PT_PID !== pid || (params.v && PT_TAB === 'hist')) PT_TAB = 'visit';
@@ -658,42 +663,34 @@ function openVisit(vid) {
     <div class="vhead">
       <span class="vdate">📅 ${dmy(x.date)}${today ? ' <b class="vtoday">Today</b>' : ` <small>${ago(x.date)}</small>`}</span>
       ${x.legacy ? '<span class="vold">📜 imported from the old program</span>' : ''}
+      <label class="vmini">✏️ <input type="date" data-k="date" value="${x.date}" title="Change the visit date"></label>
       <span class="sp"></span>
-      <label class="vmini">Date <input type="date" data-k="date" value="${x.date}"></label>
-      <label class="vmini">💵 ×1000 <input data-k="price" inputmode="numeric" style="width:54px" title="In thousands: 15 = 15,000 IQD" value="${x.price != null ? x.price : ''}"></label>
-      <select data-k="fee_type" title="Fee" class="vmini">${[['', '✅ Paid'], ['review', '🔁 Review (مراجعة)'], ['free', '🎁 Free']].map(([k, l]) => `<option value="${k}"${(x.fee_type || '') === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
-    </div>
-    <div class="vitals vrow">${VT.map(([k, l, e]) => `<label><span>${e} ${l}</span><input data-k="${k}" inputmode="decimal" value="${x[k] != null ? fnum(x[k], 2) : ''}"></label>`).join('')}</div>
-    <div class="chips" id="vchips"></div>
-    <div class="vbody2">
-      <nav class="stabs">
-        ${SO.map(([k, t, l, e, ph, c]) => `<button type="button" class="st st-${c}" data-st="${k}"><i>${e}</i><span><b>${t} · ${l}</b><small class="stp" id="stp_${k}"></small></span></button>`).join('')}
-        <button type="button" class="st st-r" data-st="rx"><i>💊</i><span><b>℞ Medications</b><small class="stp" id="stp_rx"></small></span></button>
-        ${x.notes || x.legacy ? `<button type="button" class="st st-n" data-st="notes"><i>🗒️</i><span><b>N · Notes</b><small class="stp" id="stp_notes"></small></span></button>` : ''}
-      </nav>
-      <div class="spanes">
-        ${SO.map(([k, t, l, e, ph, c]) => `<section class="spane sf-${c}" data-sp="${k}"><div class="sph">${e} <b>${l}</b><small>Alt+↑ / Alt+↓ to move between sections</small></div><textarea data-k="${k}" data-lang="en" dir="auto" placeholder="${ph}"${k === 'diagnosis' ? ' style="font-weight:600"' : ''}>${esc(x[k] || '')}</textarea></section>`).join('')}
-        <section class="spane sf-r" data-sp="rx">
-          <div class="rxhead"><b>💊 ℞ Medications</b><span class="sp"></span>
-            <select id="tpl" title="Ready prescriptions"><option value="">📑 Templates…</option>${(L.templates || []).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>
-            <button class="small" id="copyLast" title="Copy the medications of the previous visit">⏮️ Last visit</button>
-            <button class="small" id="saveTpl" title="Save these lines as a ready prescription">💾 Save as template</button></div>
-          <div id="rxAlerts"></div><div class="meds" id="meds"></div>
-          <div class="fu"><label>📆 Follow-up <input type="date" data-k="follow_up" value="${x.follow_up || ''}"></label>
-            ${[7, 14, 30, 60, 90].map(n => `<button class="small" data-fu="${n}">${n < 30 ? n + 'd' : n / 30 + 'mo'}</button>`).join('')}</div>
-        </section>
-        ${x.notes || x.legacy ? `<section class="spane sf-n" data-sp="notes"><div class="sph">🗒️ <b>Notes</b></div>${x.legacy && x.notes ? `<button class="small" type="button" id="togNotes">Show original old note</button>` : ''}<textarea data-k="notes" id="notesTa" data-lang="en" dir="auto" style="${x.legacy && x.notes ? 'display:none;margin-top:6px;background:var(--amber-bg)' : ''}">${esc(x.notes || '')}</textarea></section>` : ''}
+      <div class="vtop">
+        <button id="pAi" class="aibtn" title="AI suggestions for today from the history and what is typed now">✨ AI suggestions</button>
+        <button class="primary" id="pRx" title="Ctrl+P">🖨️ Prescription</button>
+        <button id="addLabs">🧪 + Lab results</button>
+        <button id="pLab">🧾 Lab request</button><button id="pEcho">❤️ Echo</button>
+        <button class="danger small" id="delV" title="Delete visit">🗑️</button>
       </div>
     </div>
-    <div class="actions vact">
-      <button class="primary" id="pRx" title="Ctrl+P">🖨️ Prescription</button>
-      <button id="pAi" class="aibtn" title="AI suggestions for today from the history and what is typed now">✨ AI suggestions</button>
-      <button id="addLabs">🧪 + Lab results</button>
-      <button id="pLab">🧾 Lab request</button><button id="pEcho">❤️ Echo</button><button id="pRef">↗️ Referral</button><button id="pRep">📄 Report</button><button id="pSick">🛌 Sick leave</button>
-      <button id="pSum" title="Arabic summary of this visit for the patient">📝 Summary</button>
-      <button id="toCalc">🧮 Calculators</button>
-      <span style="flex:1"></span><button class="danger small" id="delV" title="Delete visit">🗑️</button>
-    </div><div id="aiPlanBox"></div></div>`;
+    <div class="vstick"><div class="vitals vrow">${VT.map(([k, l, e]) => `<label><span>${e} ${l}</span><input data-k="${k}" inputmode="decimal" value="${x[k] != null ? fnum(x[k], 2) : ''}"></label>`).join('')}</div>
+    <div class="chips kchips" id="vchips"></div></div>
+    <div class="vbody">
+      <div class="soap2">
+        ${SO.map(([k, t, l, e, ph, c]) => `<div class="sf sf-${c}"><div class="sk" title="${l}">${e}<b>${t}</b><small>${l}</small></div><div class="sv"><textarea data-k="${k}" rows="2" data-lang="en" dir="auto" placeholder="${ph}"${k === 'diagnosis' ? ' style="font-weight:600"' : ''}>${esc(x[k] || '')}</textarea></div></div>`).join('')}
+        ${x.notes || x.legacy ? `<div class="sf sf-n"><div class="sk">🗒️<b>N</b><small>Notes</small></div><div class="sv">${x.legacy && x.notes ? `<button class="small" type="button" id="togNotes">Show original old note</button>` : ''}<textarea data-k="notes" id="notesTa" rows="3" data-lang="en" dir="auto" style="${x.legacy && x.notes ? 'display:none;margin-top:6px;background:var(--amber-bg)' : ''}">${esc(x.notes || '')}</textarea></div></div>` : ''}
+      </div>
+      <div class="rxcol">
+        <div class="rxhead"><b>💊 ℞ Medications</b><span class="sp"></span>
+          <select id="tpl" title="Ready prescriptions"><option value="">📑 Templates…</option>${(L.templates || []).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>
+          <button class="small" id="copyLast" title="Copy the medications of the previous visit">⏮️ Last visit</button>
+          <button class="small" id="saveTpl" title="Save these lines as a ready prescription">💾</button></div>
+        <div id="rxAlerts"></div><div class="meds" id="meds"></div>
+        <div class="fu"><label>📆 Follow-up <input type="date" data-k="follow_up" value="${x.follow_up || ''}"></label>
+          ${[7, 14, 30, 60, 90].map(n => `<button class="small" data-fu="${n}">${n < 30 ? n + 'd' : n / 30 + 'mo'}</button>`).join('')}</div>
+      </div>
+    </div>
+  </div><div id="aiPlanBox"></div>`;
   const root = $('#vedit');
   $$('[data-k]', root).forEach(el => {
     const k = el.dataset.k;
@@ -701,7 +698,6 @@ function openVisit(vid) {
       let val = el.value;
       visitChanged(k, val);
       if (['bp_sys', 'bp_dia', 'hr', 'rr', 'temp', 'spo2', 'rbs', 'weight', 'height', 'waist'].includes(k)) vitalsChips();
-      if (k === 'fee_type' && val === 'free') { const pr = $('[data-k=price]', root); pr.value = 0; }
       if (k === 'diagnosis' || k === 'complaint') renderVisitList(VIS.id);
     });
     if (k === 'date') el.addEventListener('change', () => { saveVisitNow().then(() => reloadPatient()); });
@@ -712,7 +708,6 @@ function openVisit(vid) {
   });
   $$('[data-fu]', root).forEach(b => b.onclick = () => { const i = $('[data-k=follow_up]', root); i.value = addDays(todayISO(), +b.dataset.fu); visitChanged('follow_up', i.value); });
   renderMeds(x.meds || []);
-  stInit(root, today && !x.complaint ? 'complaint' : null);
   vitalsChips(); rxCheck();
   $('#tpl').onchange = e => { const t = (L.templates || []).find(y => y.id === +e.target.value); e.target.value = ''; if (!t) return;
     const cur = currentMeds(); t.lines.forEach(l => { if (!cur.includes(l)) cur.push(l); }); renderMeds(cur); saveMeds();
@@ -845,19 +840,23 @@ function latestLab(code, beforeIso) {
 function vitalsChips() {
   const x = P.visits.find(y => y.id === VIS.id); if (!x) return;
   const p = P.patient, g = k => { const el = $(`#vedit [data-k=${k}]`); return el && el.value !== '' ? +el.value : null; };
-  const w = g('weight'), h = g('height') || p.height, s = g('bp_sys'), d = g('bp_dia'), spo2 = g('spo2'), hr = g('hr'), t = g('temp'), rbs = g('rbs');
+  const prevOf = k => { const y = P.visits.find(v => v.id !== x.id && v.date <= x.date && v[k] != null && v[k] !== ''); return y ? +y[k] : null; };
+  const w0 = g('weight'), w = w0 != null ? w0 : prevOf('weight'), h = g('height') || p.height || prevOf('height'), s = g('bp_sys'), d = g('bp_dia'), spo2 = g('spo2'), hr = g('hr'), t = g('temp'), rbs = g('rbs');
   const age = ageAt(p, x.date);
   const chips = [];
   const bmi = C.bmi(w, h);
-  if (bmi) chips.push([`BMI <b>${bmi.toFixed(1)}</b> ${C.bmiCat(bmi)}`, bmi >= 30 || bmi < 18.5 ? 'abn' : bmi >= 25 ? 'mid' : '']);
-  const bsa = C.bsa(w, h); if (bsa) chips.push([`BSA <b>${bsa.toFixed(2)}</b> m²`, '']);
-  if (s && d) chips.push([`MAP <b>${Math.round(C.map(s, d))}</b>`, '']);
+  const wl = w0 == null && w != null ? ' <span class="muted">(last weight)</span>' : '';
+  if (bmi) chips.push([`⚖️ BMI <b>${bmi.toFixed(1)}</b> ${C.bmiCat(bmi)}${wl}`, bmi >= 30 || bmi < 18.5 ? 'abn' : bmi >= 25 ? 'mid' : '']);
+  else chips.push([`⚖️ BMI — ${w == null ? 'enter weight' : ''}${w == null && !h ? ' & ' : ''}${!h ? 'enter height' : ''}`, 'ghost']);
+  const bsa = C.bsa(w, h); if (bsa) chips.push([`📐 BSA <b>${bsa.toFixed(2)}</b> m²`, '']);
+  if (s && d) chips.push([`🫀 MAP <b>${Math.round(C.map(s, d))}</b>`, '']);
   if (s && d) { const c = s >= 180 || d >= 120 ? ['Hypertensive crisis', 'abn'] : s >= 140 || d >= 90 ? ['Stage 2 HTN range', 'abn'] : s >= 130 || d >= 80 ? ['Stage 1 HTN range', 'mid'] : s < 90 ? ['Low BP', 'abn'] : ['BP normal', '']; chips.push([c[0], c[1]]); }
   const cr = latestLab('CREAT', x.date);
-  if (cr) { const e = C.egfr(cr.value, ageAt(p, cr.date), p.gender); if (e) chips.push([`eGFR <b>${Math.round(e)}</b> ${C.ckd(e)} <span class="muted">(Cr ${cr.value}, ${dmy(cr.date)})</span>`, e < 30 ? 'abn' : e < 60 ? 'mid' : '']);
-    const cc = C.crcl(cr.value, age, w, p.gender); if (cc) chips.push([`CrCl <b>${Math.round(cc)}</b> mL/min`, cc < 30 ? 'abn' : cc < 60 ? 'mid' : '']); }
+  if (cr) { const e = C.egfr(cr.value, ageAt(p, cr.date), p.gender); if (e) chips.push([`🧪 eGFR <b>${Math.round(e)}</b> ${C.ckd(e)} <span class="muted">(Cr ${cr.value}, ${dmy(cr.date)})</span>`, e < 30 ? 'abn' : e < 60 ? 'mid' : '']);
+    const cc = C.crcl(cr.value, age, w, p.gender); if (cc) chips.push([`💧 CrCl <b>${Math.round(cc)}</b> mL/min`, cc < 30 ? 'abn' : cc < 60 ? 'mid' : '']); }
+  if (!cr) chips.push(['🧪 eGFR — no creatinine yet', 'ghost']);
   if (!p.gender && cr) chips.push(['Set gender in the file to calculate eGFR', 'mid']);
-  const ibw = C.ibw(h, p.gender); if (ibw && h) chips.push([`IBW <b>${ibw.toFixed(0)}</b> kg`, '']);
+  const ibw = C.ibw(h, p.gender); if (ibw && h) chips.push([`🎯 IBW <b>${ibw.toFixed(0)}</b> kg`, '']);
   $('#vchips').innerHTML = chips.map(([t, c]) => `<span class="chip ${c}">${t}</span>`).join('');
   const flag = (k, bad) => { const el = $(`#vedit [data-k=${k}]`); if (el) el.classList.toggle('abn', !!bad); };
   flag('bp_sys', s && (s >= 140 || s < 90)); flag('bp_dia', d && (d >= 90 || d < 50)); flag('spo2', spo2 && spo2 < 94); flag('hr', hr && (hr > 100 || hr < 50));
