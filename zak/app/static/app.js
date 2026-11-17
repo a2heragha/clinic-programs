@@ -1164,7 +1164,7 @@ function printDoc(date, body, opts = {}) {
       <div class="sh-tri" style="left:0;clip-path:polygon(0 0,100% 100%,0 100%)"></div><div class="sh-tri" style="right:0;clip-path:polygon(100% 0,100% 100%,0 100%)"></div>
       <div class="sh-bar"></div>`;
   }
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(p.name)}</title><style>${css}</style></head><body><div class="page">${page}</div></body></html>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>&nbsp;</title><style>${css}</style></head><body><div class="page">${page}</div></body></html>`;
   if (opts.preview) return html;
   const f = document.createElement('iframe');
   f.style.cssText = 'position:fixed;width:0;height:0;border:0;right:0;bottom:0';
