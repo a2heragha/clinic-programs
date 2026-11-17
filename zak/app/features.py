@@ -269,6 +269,36 @@ def ai_call(key, model, content, max_tokens=2000, system=None):
     return ''.join(b.get('text', '') for b in res.get('content', []) if b.get('type') == 'text')
 
 
+def ai_tool(key, model, content, schema, max_tokens=4000, system=None):
+    """ask for an answer in a fixed structure: the API returns it already parsed (tool use), so no JSON text can be malformed"""
+    if not key:
+        raise RuntimeError('No AI key — add it in Settings → AI features')
+    body = {'model': model or DEFAULT_MODEL, 'max_tokens': max_tokens, 'messages': [{'role': 'user', 'content': content}],
+            'tools': [{'name': 'answer', 'description': 'Give the answer in this structure.', 'input_schema': schema}],
+            'tool_choice': {'type': 'tool', 'name': 'answer'}}
+    if system:
+        body['system'] = system
+    req = urllib.request.Request(API_URL, data=json.dumps(body).encode('utf-8'), method='POST',
+                                 headers={'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=180) as r:
+            res = json.loads(r.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        try:
+            msg = json.loads(e.read().decode('utf-8')).get('error', {}).get('message')
+        except Exception:
+            msg = None
+        raise RuntimeError('AI service error %s: %s' % (e.code, msg or e.reason))
+    except urllib.error.URLError as e:
+        raise RuntimeError('No internet connection to the AI service (%s)' % e.reason)
+    for b in res.get('content', []):
+        if b.get('type') == 'tool_use' and isinstance(b.get('input'), dict):
+            return b['input']
+    if res.get('stop_reason') == 'max_tokens':
+        raise RuntimeError('The AI answer was too long — try again')
+    raise RuntimeError('The AI gave no answer (%s) — try again' % (res.get('stop_reason') or '?'))
+
+
 def _close_json(t):
     """close a JSON text cut off at the token limit: an open string, then open [ and {"""
     stack, ins, esc = [], False, False
@@ -328,10 +358,14 @@ def ai_read_labs(key, model, data, mime, tests):
     prompt = ('This is a laboratory report from Iraq. Extract every result that matches one of these test codes:\n' + codes +
               '\n\nConvert to the unit shown when the report uses another unit (e.g. creatinine µmol/L ÷ 88.4 → mg/dL, glucose mmol/L × 18 → mg/dL, '
               'cholesterol mmol/L × 38.67, TG mmol/L × 88.57, urea mmol/L × 6.006, Hb g/L ÷ 10). '
-              'Reply with JSON only, no prose: {"date":"YYYY-MM-DD or null","items":[{"code":"CODE","value":number,"as_written":"text on the sheet"}],'
+              'Give the answer with the answer tool: {"date":"YYYY-MM-DD or null","items":[{"code":"CODE","value":number,"as_written":"text on the sheet"}],'
               '"other":["results that have no code, as written"]}')
-    txt = ai_call(key, model, [block, {'type': 'text', 'text': prompt}], 3000)
-    out = parse_json(txt, key, model)
+    schema = {'type': 'object', 'properties': {
+        'date': {'type': ['string', 'null'], 'description': 'YYYY-MM-DD or null'},
+        'items': {'type': 'array', 'items': {'type': 'object', 'properties': {'code': {'type': 'string'}, 'value': {'type': 'number'}, 'as_written': {'type': 'string'}},
+                                             'required': ['code', 'value']}},
+        'other': {'type': 'array', 'items': {'type': 'string'}}}, 'required': ['items']}
+    out = ai_tool(key, model, [block, {'type': 'text', 'text': prompt}], schema, 3000)
     valid = {t['code'] for t in tests}
     out['items'] = [i for i in out.get('items', []) if i.get('code') in valid and isinstance(i.get('value'), (int, float))]
     return out
@@ -420,7 +454,7 @@ def ai_plan(key, model, pdata, visit, family=None):
               'You support an experienced internist in Mosul, Iraq, during today\'s visit. Using the history and what is typed for today, suggest what to do NOW. '
               'Be specific to this patient (doses adjusted to eGFR, allergies and interactions respected, drugs available in Iraq by generic name). '
               'If today\'s complaint is empty, base it on follow-up of the known problems. Do not repeat things already done today. '
-              'Reply with JSON only, no prose, in English:\n'
+              'Give the answer with the answer tool, in English. Fields:\n'
               '{"focus":"one-line summary of today\'s main issue",'
               '"red_flags":["urgent warnings, or empty"],'
               '"questions":["targeted history questions to ask today"],'
@@ -431,9 +465,16 @@ def ai_plan(key, model, pdata, visit, family=None):
               '"plan":["short plan / advice items"],'
               '"follow_up_days":number or null}\n'
               'Max 6 items per list, most important first.')
-    txt = ai_call(key, model or PLAN_MODEL, prompt, 4000,
+    schema = {'type': 'object', 'properties': {
+        'focus': {'type': 'string'}, 'red_flags': {'type': 'array', 'items': {'type': 'string'}}, 'questions': {'type': 'array', 'items': {'type': 'string'}}, 'exam': {'type': 'array', 'items': {'type': 'string'}},
+        'ddx': {'type': 'array', 'items': {'type': 'object', 'properties': {'dx': {'type': 'string'}, 'for': {'type': 'string'}, 'against': {'type': 'string'}}, 'required': ['dx']}},
+        'tests': {'type': 'array', 'items': {'type': 'object', 'properties': {'test': {'type': 'string'}, 'why': {'type': 'string'}}, 'required': ['test']}},
+        'meds': {'type': 'array', 'items': {'type': 'object', 'properties': {'action': {'type': 'string', 'enum': ['start', 'continue', 'adjust', 'stop']},
+                                                                              'line': {'type': 'string'}, 'why': {'type': 'string'}}, 'required': ['action', 'line']}},
+        'plan': {'type': 'array', 'items': {'type': 'string'}}, 'follow_up_days': {'type': ['integer', 'null']}},
+        'required': ['focus', 'red_flags', 'questions', 'exam', 'ddx', 'tests', 'meds', 'plan']}
+    out = ai_tool(key, model or PLAN_MODEL, prompt, schema, 4000,
                   system='You are a careful internal-medicine decision-support assistant. Suggestions are reviewed by the physician before use. Use only the given data; say when data is missing.')
-    out = parse_json(txt, key, model or PLAN_MODEL)
     for k in ('red_flags', 'questions', 'exam', 'ddx', 'tests', 'meds', 'plan'):
         if not isinstance(out.get(k), list):
             out[k] = []
