@@ -411,7 +411,7 @@ html.arui .daybar .dchip i{right:auto;left:-5px}
 .pbtns button{padding:4px 9px;font-size:12.5px;border-radius:16px}
 .ptabs{display:grid;grid-template-columns:138px minmax(0,1fr);gap:8px;align-items:start}
 .ptabs>*{min-height:0}
-.ptnav{margin:0;padding:5px;position:sticky;top:58px}
+.ptnav{margin:0;padding:5px;position:sticky;top:calc(var(--topH,46px) + 8px)}
 .ptsep{font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--muted);border-top:1px solid var(--line,#e3e8ef);margin:6px 2px 2px;padding-top:6px}
 .ptnav .pnew{justify-content:center;margin-bottom:6px;background:linear-gradient(135deg,#2c7a3f,#1f5f30);border:0;color:#fff;font-weight:700;border-radius:10px;padding:9px}
 .ptnav button{position:relative;border-radius:8px;padding:6px 7px;font-size:13px;gap:6px}
@@ -422,6 +422,12 @@ html.arui .daybar .dchip i{right:auto;left:-5px}
 .ptmain{min-width:0}
 .ptmain [data-pane=visit]>.card{margin:0 0 8px}
 .ptmain .due:empty{display:none}
+#ptStash>.card{margin:0 0 8px}
+.vinfo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:start}
+.vinfo .card{margin:0 0 8px;box-shadow:none;border:1px solid #e3e9f1}
+.vinfoL,.vinfoR{min-width:0}
+.vinfoR #labsCard{max-height:62vh;overflow:auto}
+@media (max-width:1100px){.vinfo{grid-template-columns:1fr}}
 .ptmain>[data-pane]>.card{margin:0}
 /* visit */
 .vcard{margin:0;padding:8px 10px;display:flex;flex-direction:column;gap:6px;min-height:100%}
@@ -437,7 +443,7 @@ html.arui .daybar .dchip i{right:auto;left:-5px}
 .vrow.vitals label{font-size:10.5px;white-space:nowrap;overflow:hidden}
 .vrow.vitals input{font-size:14px;padding:3px 2px;border-radius:8px;background:#f8fafc}
 .vcard .chips{margin-top:0}
-.vstick{position:sticky;top:50px;z-index:6;background:var(--card,#fff);margin:0 -10px;padding:5px 10px 6px;border-bottom:1px solid #e6ecf3;box-shadow:0 6px 10px -8px rgba(16,32,60,.25)}
+.vstick{position:sticky;top:var(--topH,46px);z-index:6;background:var(--card,#fff);margin:-8px -10px 0;padding:7px 10px 6px;border-radius:10px 10px 0 0;border-bottom:1px solid #e6ecf3;box-shadow:0 6px 10px -8px rgba(16,32,60,.25)}
 .kchips{margin-top:5px!important;gap:5px}
 .kchips .chip{font-size:12.5px;border-radius:14px;padding:3px 10px}
 .kchips .chip.ghost{background:transparent;border:1px dashed #c5d0dc;color:var(--muted)}
@@ -452,7 +458,7 @@ html.arui .daybar .dchip i{right:auto;left:-5px}
 .sk b{font-size:15px}.sk small{font-size:9.5px;color:var(--muted);font-weight:600}
 .sv textarea{field-sizing:content;min-height:52px;max-height:340px;resize:vertical;border-radius:7px;border-color:transparent;background:#fff;font-size:14px;line-height:1.5}
 .sv textarea:focus{box-shadow:0 4px 14px rgba(29,79,138,.12)}
-.rxcol{display:flex;flex-direction:column;gap:5px;border-radius:10px;padding:6px 8px;background:linear-gradient(180deg,#f3f7fd,#fff);border:1px solid #d7e3f2;position:sticky;top:58px}
+.rxcol{display:flex;flex-direction:column;gap:5px;border-radius:10px;padding:6px 8px;background:linear-gradient(180deg,#f3f7fd,#fff);border:1px solid #d7e3f2}
 .rxhead{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
 .rxhead b{font-size:14.5px;color:var(--accent)}
 .rxhead .sp{flex:1}

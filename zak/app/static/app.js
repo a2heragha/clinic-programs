@@ -509,7 +509,7 @@ function visitChanged(k, val) {
 }
 
 /* patient screen: tabs on the left, the open tab in the middle, a fixed column on the right (due items + summary) */
-const PT_TABS = [['visit', 'Visit', '🩺'], ['hist', 'All visits', '🗂️'], ['labs', 'Labs & trends', '🧪'], ['files', 'Investigation files', '📎'], ['wt', 'Weight & BMI', '⚖️'], ['fam', 'Family history', '👪']];
+const PT_TABS = [['visit', 'Visit', '🩺'], ['hist', 'All visits', '🗂️'], ['files', 'Investigation files', '📎'], ['wt', 'Weight & BMI', '⚖️'], ['fam', 'Family history', '👪']];
 let PT_TAB = 'visit', PT_PID = null;
 function ptShow(k) {
   if (!PT_TABS.some(t => t[0] === k)) k = 'visit';
@@ -520,7 +520,8 @@ function ptShow(k) {
 /* the patient screen fills the window exactly: no page scroll, each column scrolls inside itself only if needed */
 function ptFit() {
   const t = $('.ptabs'); if (!t) return;
-  const top = t.getBoundingClientRect().top + window.scrollY;
+  const top = t.getBoundingClientRect().top + window.scrollY, bar = $('.top');
+  if (bar) document.documentElement.style.setProperty('--topH', bar.offsetHeight + 'px');
   document.documentElement.style.setProperty('--ptop', Math.max(120, Math.round(top + 10)) + 'px'); // kept for the layout of other panels
 }
 window.addEventListener('resize', () => ptFit());
@@ -568,9 +569,8 @@ async function viewPatient(v, pid, params) {
       <button id="toCalc" title="Calculators"><i class="pte">🧮</i><span>Calculators</span></button>
     </nav>
     <div class="ptmain">
-      <div data-pane="visit"><div class="card due" id="dueCard"></div><div class="card sum" id="summary"></div><div id="vedit"></div></div>
+      <div data-pane="visit"><div id="ptStash"><div class="card due" id="dueCard"></div><div class="card sum" id="summary"></div><div class="card" id="labsCard"></div></div><div id="vedit"></div></div>
       <div data-pane="hist"><div class="card"><h3>All visits<span class="sp"></span><span class="muted small" style="text-transform:none">click a visit to open it</span></h3><div class="vlist wide" id="vlist"></div></div></div>
-      <div data-pane="labs"><div class="card" id="labsCard"></div></div>
       <div data-pane="files"><div class="card" id="filesCard"></div></div>
       <div data-pane="wt"><div class="card" id="wtCard"></div></div>
       <div data-pane="fam"><div class="card" id="famHx"></div></div>
@@ -654,13 +654,14 @@ function openVisit(vid) {
   VIS.id = vid; VIS.pending = {};
   const p = P.patient;
   const today = x.date === todayISO();
-  const VT = [['bp_sys', 'BP sys', '🩸'], ['bp_dia', 'BP dia', '🩸'], ['hr', 'Pulse', '💓'], ['rr', 'RR', '🌬️'], ['temp', 'Temp °C', '🌡️'], ['spo2', 'SpO₂ %', '🫁'],
+  const VT = [['bp_sys', 'BP sys', '🩸'], ['bp_dia', 'BP dia', '🩸'], ['hr', 'Pulse', '💓'], ['rr', 'RR', '🌬️'], ['temp', 'Temp °C', '🌡️'], ['spo2', 'SpO₂ %', '💨'],
     ['rbs', 'RBS', '🍬'], ['weight', 'Wt kg', '⚖️'], ['height', 'Ht cm', '📏'], ['waist', 'Waist', '📐']];
   const SO = [['complaint', 'S', 'Complaint', '🗣️', 'Chief complaint, history of present illness', 's'], ['exam', 'O', 'Exam', '🔍', 'Examination findings', 'o'],
     ['diagnosis', 'A', 'Diagnosis', '🎯', 'One diagnosis per line (suggestions appear while typing)', 'a'], ['plan', 'P', 'Plan', '📋', 'Plan, investigations, advice', 'p'],
-    ['imaging', 'Im', 'Imaging', '🩻', 'X-ray, ultrasound, CT, MRI, echo — date and findings', 'i']];
+    ['imaging', 'Im', 'Imaging', '📷', 'X-ray, ultrasound, CT, MRI, echo — date and findings', 'i']];
+  const stash = $('#ptStash'); ['dueCard', 'summary', 'labsCard'].forEach(id => { const n = document.getElementById(id); if (n && stash && n.parentNode !== stash) stash.append(n); });
   $('#vedit').innerHTML = `<div class="card vcard">
-    <div class="vhead">
+    <div class="vstick"><div class="vhead">
       <span class="vdate">📅 ${dmy(x.date)}${today ? ' <b class="vtoday">Today</b>' : ` <small>${ago(x.date)}</small>`}</span>
       ${x.legacy ? '<span class="vold">📜 imported from the old program</span>' : ''}
       <label class="vmini">✏️ <input type="date" data-k="date" value="${x.date}" title="Change the visit date"></label>
@@ -673,8 +674,9 @@ function openVisit(vid) {
         <button class="danger small" id="delV" title="Delete visit">🗑️</button>
       </div>
     </div>
-    <div class="vstick"><div class="vitals vrow">${VT.map(([k, l, e]) => `<label><span>${e} ${l}</span><input data-k="${k}" inputmode="decimal" value="${x[k] != null ? fnum(x[k], 2) : ''}"></label>`).join('')}</div>
+    <div class="vitals vrow">${VT.map(([k, l, e]) => `<label><span>${e} ${l}</span><input data-k="${k}" inputmode="decimal" value="${x[k] != null ? fnum(x[k], 2) : ''}"></label>`).join('')}</div>
     <div class="chips kchips" id="vchips"></div></div>
+    <div class="vinfo"><div class="vinfoL" id="vinfoL"></div><div class="vinfoR" id="vinfoR"></div></div>
     <div class="vbody">
       <div class="soap2">
         ${SO.map(([k, t, l, e, ph, c]) => `<div class="sf sf-${c}"><div class="sk" title="${l}">${e}<b>${t}</b><small>${l}</small></div><div class="sv"><textarea data-k="${k}" rows="2" data-lang="en" dir="auto" placeholder="${ph}"${k === 'diagnosis' ? ' style="font-weight:600"' : ''}>${esc(x[k] || '')}</textarea></div></div>`).join('')}
@@ -691,6 +693,7 @@ function openVisit(vid) {
       </div>
     </div>
   </div><div id="aiPlanBox"></div>`;
+  $('#vinfoL').append($('#dueCard'), $('#summary')); $('#vinfoR').append($('#labsCard'));
   const root = $('#vedit');
   $$('[data-k]', root).forEach(el => {
     const k = el.dataset.k;
@@ -849,7 +852,7 @@ function vitalsChips() {
   if (bmi) chips.push([`⚖️ BMI <b>${bmi.toFixed(1)}</b> ${C.bmiCat(bmi)}${wl}`, bmi >= 30 || bmi < 18.5 ? 'abn' : bmi >= 25 ? 'mid' : '']);
   else chips.push([`⚖️ BMI — ${w == null ? 'enter weight' : ''}${w == null && !h ? ' & ' : ''}${!h ? 'enter height' : ''}`, 'ghost']);
   const bsa = C.bsa(w, h); if (bsa) chips.push([`📐 BSA <b>${bsa.toFixed(2)}</b> m²`, '']);
-  if (s && d) chips.push([`🫀 MAP <b>${Math.round(C.map(s, d))}</b>`, '']);
+  if (s && d) chips.push([`💗 MAP <b>${Math.round(C.map(s, d))}</b>`, '']);
   if (s && d) { const c = s >= 180 || d >= 120 ? ['Hypertensive crisis', 'abn'] : s >= 140 || d >= 90 ? ['Stage 2 HTN range', 'abn'] : s >= 130 || d >= 80 ? ['Stage 1 HTN range', 'mid'] : s < 90 ? ['Low BP', 'abn'] : ['BP normal', '']; chips.push([c[0], c[1]]); }
   const cr = latestLab('CREAT', x.date);
   if (cr) { const e = C.egfr(cr.value, ageAt(p, cr.date), p.gender); if (e) chips.push([`🧪 eGFR <b>${Math.round(e)}</b> ${C.ckd(e)} <span class="muted">(Cr ${cr.value}, ${dmy(cr.date)})</span>`, e < 30 ? 'abn' : e < 60 ? 'mid' : '']);
