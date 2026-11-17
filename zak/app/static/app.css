@@ -397,7 +397,7 @@ html.arui .daybar .dchip i{right:auto;left:-5px}
 
 /* ================= patient screen: fits the window, no page scrolling ================= */
 .pview{display:flex;flex-direction:column;gap:8px}
-.phd{display:flex;align-items:center;gap:12px;margin:0;padding:8px 12px;background:linear-gradient(135deg,#fff 0%,#f4f8fd 100%);border-left:5px solid var(--accent)}
+.phd{position:sticky;top:var(--topH,46px);z-index:8;box-shadow:0 6px 12px -8px rgba(16,32,60,.3);display:flex;align-items:center;gap:12px;margin:0;padding:8px 12px;background:linear-gradient(135deg,#fff 0%,#f4f8fd 100%);border-left:5px solid var(--accent)}
 .pav{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;flex:none;font-family:Tahoma,Arial}
 .pav.m{background:linear-gradient(135deg,#2f6fb1,#1d4f8a)}.pav.f{background:linear-gradient(135deg,#c2477a,#8a2c5a)}
 .pinfo{min-width:0;flex:0 1 auto}
@@ -411,7 +411,7 @@ html.arui .daybar .dchip i{right:auto;left:-5px}
 .pbtns button{padding:4px 9px;font-size:12.5px;border-radius:16px}
 .ptabs{display:grid;grid-template-columns:138px minmax(0,1fr);gap:8px;align-items:start}
 .ptabs>*{min-height:0}
-.ptnav{margin:0;padding:5px;position:sticky;top:calc(var(--topH,46px) + 8px)}
+.ptnav{margin:0;padding:5px;position:sticky;top:calc(var(--topH,46px) + var(--phdH,62px) + 8px)}
 .ptsep{font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--muted);border-top:1px solid var(--line,#e3e8ef);margin:6px 2px 2px;padding-top:6px}
 .ptnav .pnew{justify-content:center;margin-bottom:6px;background:linear-gradient(135deg,#2c7a3f,#1f5f30);border:0;color:#fff;font-weight:700;border-radius:10px;padding:9px}
 .ptnav button{position:relative;border-radius:8px;padding:6px 7px;font-size:13px;gap:6px}
@@ -443,7 +443,8 @@ html.arui .daybar .dchip i{right:auto;left:-5px}
 .vrow.vitals label{font-size:10.5px;white-space:nowrap;overflow:hidden}
 .vrow.vitals input{font-size:14px;padding:3px 2px;border-radius:8px;background:#f8fafc}
 .vcard .chips{margin-top:0}
-.vstick{position:sticky;top:var(--topH,46px);z-index:6;background:var(--card,#fff);margin:-8px -10px 0;padding:7px 10px 6px;border-radius:10px 10px 0 0;border-bottom:1px solid #e6ecf3;box-shadow:0 6px 10px -8px rgba(16,32,60,.25)}
+.vstick{position:sticky;top:calc(var(--topH,46px) + var(--phdH,62px) + 8px);z-index:6;background:var(--card,#fff);margin:-8px -10px 0;padding:7px 10px 6px;border-radius:10px 10px 0 0;border-bottom:1px solid #e6ecf3;box-shadow:0 6px 10px -8px rgba(16,32,60,.25)}
+.vstick::before{content:'';position:absolute;left:-2px;right:-2px;top:-40px;height:40px;background:var(--bg)}
 .kchips{margin-top:5px!important;gap:5px}
 .kchips .chip{font-size:12.5px;border-radius:14px;padding:3px 10px}
 .kchips .chip.ghost{background:transparent;border:1px dashed #c5d0dc;color:var(--muted)}

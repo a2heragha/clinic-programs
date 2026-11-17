@@ -522,6 +522,9 @@ function ptFit() {
   const t = $('.ptabs'); if (!t) return;
   const top = t.getBoundingClientRect().top + window.scrollY, bar = $('.top');
   if (bar) document.documentElement.style.setProperty('--topH', bar.offsetHeight + 'px');
+  const hd = $('.phd');
+  if (hd) { document.documentElement.style.setProperty('--phdH', hd.offsetHeight + 'px');
+    if (!hd._ro && window.ResizeObserver) { hd._ro = new ResizeObserver(() => document.documentElement.style.setProperty('--phdH', hd.offsetHeight + 'px')); hd._ro.observe(hd); } }
   document.documentElement.style.setProperty('--ptop', Math.max(120, Math.round(top + 10)) + 'px'); // kept for the layout of other panels
 }
 window.addEventListener('resize', () => ptFit());
