@@ -234,6 +234,14 @@ def boot(app_dir, config_path, online=True):
         pending = _read(_p('.update_pending'))
         if pending:                                     # previous update not confirmed healthy yet
             pending['starts'] = int(pending.get('starts') or 0) + 1
+            newer = False
+            if online:                                  # a newer version replaces the unconfirmed one directly
+                try:
+                    newer = check() and (_read(os.path.join(CTX['app'] + '.staged', '.version'), {}) or {}).get('sha') != pending.get('sha')
+                except Exception as e:
+                    STATE['error'] = str(e)
+            if newer:
+                return apply_staged()
             if pending['starts'] >= 3:
                 return rollback(pending)
             _write(_p('.update_pending'), pending)
@@ -269,7 +277,7 @@ def healthy():
 
 def loop():
     def run():
-        time.sleep(60)
+        time.sleep(20)
         healthy()
         while True:
             try:
