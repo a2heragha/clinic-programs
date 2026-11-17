@@ -1184,6 +1184,33 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, f.read(), MIME.get(os.path.splitext(full)[1], 'application/octet-stream'))
 
 
+def open_browser(url):
+    """Opens the program in Chrome (or Edge) as a full-screen window without tabs or address bar.
+    F11 leaves full screen. "fullscreen": false in config.json opens the normal browser instead.
+    A separate browser profile in data/ makes Chrome honour the full-screen switch even when
+    Chrome is already open for other things."""
+    import webbrowser, subprocess
+    if CFG.get('fullscreen', True) is False or os.name != 'nt':
+        return webbrowser.open(url)
+    cands = []
+    for env in ('PROGRAMFILES', 'PROGRAMFILES(X86)', 'LOCALAPPDATA'):
+        b = os.environ.get(env)
+        if b:
+            cands += [os.path.join(b, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+                      os.path.join(b, 'Microsoft', 'Edge', 'Application', 'msedge.exe')]
+    exe = next((c for c in cands if os.path.isfile(c)), None)
+    if not exe:
+        return webbrowser.open(url)
+    prof = os.path.join(ROOT, 'data', 'browser-profile')
+    try:
+        os.makedirs(prof, exist_ok=True)
+        subprocess.Popen([exe, '--app=' + url, '--start-fullscreen', '--user-data-dir=' + prof,
+                          '--no-first-run', '--no-default-browser-check', '--disable-features=Translate'],
+                         close_fds=True)
+    except Exception:
+        webbrowser.open(url)
+
+
 def local_ips():
     ips = set()
     try:
@@ -1234,7 +1261,7 @@ def main():
             import urllib.request, webbrowser
             urllib.request.urlopen('http://127.0.0.1:%d/api/me' % port, timeout=3)
             print(' Clinic server is already running - opening it in the browser.')
-            webbrowser.open('http://localhost:%d' % port)
+            open_browser('http://localhost:%d' % port)
             sys.exit(3)
         except SystemExit:
             raise
@@ -1256,8 +1283,7 @@ def main():
     print('=' * 60)
     if '--no-browser' not in sys.argv:
         try:
-            import webbrowser
-            webbrowser.open('http://localhost:%d' % port)
+            open_browser('http://localhost:%d' % port)
         except Exception:
             pass
     try:
