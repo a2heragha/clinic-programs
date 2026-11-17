@@ -28,9 +28,10 @@
   #qres .it.res span:nth-child(3){display:none}
 
   /* ---------- grids become one column */
-  .pgrid,.split,.split.ps,.sgrid,.rgrid,.aigrid,.calcs,.settings-grid{grid-template-columns:1fr!important}
+  .pgrid,.ptabs,.split,.split.ps,.sgrid,.rgrid,.aigrid,.calcs,.settings-grid{grid-template-columns:1fr!important}
+  .ptabs .pside{position:static;max-height:none}
   .tabsview{grid-template-columns:1fr;gap:8px}
-  .tabsview>*,.split>*,.sgrid>*,.pgrid>*,.rgrid>*,#setPane,#calcPane,#regPane{min-width:0;max-width:100%}
+  .tabsview>*,.split>*,.sgrid>*,.pgrid>*,.ptabs>*,.rgrid>*,#setPane,#calcPane,#regPane{min-width:0;max-width:100%}
   .vtabs{position:static;flex-direction:row;overflow-x:auto;max-height:none;padding:4px;gap:4px;-webkit-overflow-scrolling:touch}
   .vtabs button{flex:0 0 auto;white-space:nowrap;padding:7px 10px}
   .row{gap:6px}

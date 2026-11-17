@@ -1003,6 +1003,13 @@ class Handler(BaseHTTPRequestHandler):
             if method == 'DELETE':
                 conn.execute('DELETE FROM labs WHERE id=?', (arg,))
                 return {'ok': True}
+        if p0 == 'lab_test' and method == 'DELETE':
+            code = parts[1].upper()
+            n = conn.execute('SELECT COUNT(*) FROM labs WHERE code=?', (code,)).fetchone()[0]
+            if n:
+                raise ApiError('%d result(s) of this test are saved in patient files - it cannot be deleted' % n)
+            conn.execute('DELETE FROM lab_tests WHERE code=?', (code,))
+            return {'ok': True}
         if p0 == 'lab_test' and method == 'PUT':
             code = parts[1].upper()
             f = {k: num(b[k]) for k in ('low', 'high', 'target') if k in b}

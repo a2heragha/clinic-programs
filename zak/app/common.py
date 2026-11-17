@@ -52,6 +52,7 @@ LAB_TESTS = [
     ('HB', 'Haemoglobin', 'g/dL', 12, 16.5, None, 'CBC'),
     ('WBC', 'WBC', '×10⁹/L', 4, 11, None, 'CBC'),
     ('PLT', 'Platelets', '×10⁹/L', 150, 450, None, 'CBC'),
+    ('EOS', 'Eosinophil count', 'cells/µL', None, 500, None, 'CBC'),
     ('FERRITIN', 'Ferritin', 'ng/mL', 15, 300, None, 'Haematinics'),
     ('VITD', 'Vitamin D', 'ng/mL', 30, 100, None, 'Haematinics'),
     ('B12', 'Vitamin B12', 'pg/mL', 200, 900, None, 'Haematinics'),

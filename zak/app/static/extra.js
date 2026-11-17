@@ -512,6 +512,12 @@ CALCS.push({ id: 'ascvd', t: 'ASCVD 10-year risk (PCE)', f: [['age', 'Age (40–
   r: v => { if (v.age && (v.age < 40 || v.age > 79)) return ['Valid for age 40–79 only', 'mid']; const r = C.ascvd(v); if (r == null) return null;
     return [`10-year ASCVD risk ${r.toFixed(1)}% — ${r < 5 ? 'low' : r < 7.5 ? 'borderline' : r < 20 ? 'intermediate: moderate/high-intensity statin' : 'high: high-intensity statin'}`, r >= 20 ? 'abn' : r >= 7.5 ? 'mid' : 'ok']; },
   n: 'Pooled Cohort Equations (ACC/AHA 2013). For known ASCVD (MI, stroke, PCI) the patient is already high risk — do not use.' });
+CALCS.push({ id: 'ganzoni', t: 'Iron deficit — Ganzoni', f: [['w', 'Weight (kg)'], ['hb', 'Actual Hb (g/dL)'], ['thb', 'Target Hb (g/dL) — empty = 15 (13 if < 35 kg)'], ['st', 'Iron stores (mg) — empty = 500 (15 mg/kg if < 35 kg)']],
+  r: v => { if (!v.w || !v.hb) return null; const small = v.w < 35, t = v.thb || (small ? 13 : 15), st = v.st != null ? v.st : (small ? 15 * v.w : 500);
+    if (t <= v.hb) return [`Hb is at or above the target (${t} g/dL) — iron deficit = stores only: ${Math.round(st)} mg`, 'ok'];
+    const d = v.w * (t - v.hb) * 2.4 + st, fcm = Math.min(1000, 20 * v.w);
+    return [`Total iron deficit ${Math.round(d)} mg · iron sucrose 100 mg ampoules: ${Math.ceil(d / 100)} (max 200 mg per dose) · ferric carboxymaltose: ${Math.ceil(d / fcm)} infusion(s) of up to ${Math.round(fcm)} mg (≤ 20 mg/kg, max 1000 mg each, ≥ 7 days apart)`, 'mid']; },
+  n: 'Ganzoni: deficit (mg) = weight (kg) × (target Hb − actual Hb) (g/dL) × 2.4 + iron stores. Check the product leaflet for the maximum single dose.' });
 CALCS.forEach(c => c.ic = c.ic || CALC_ICON[c.id] || 'calc');
 
 /* every date box shows and accepts day/month/year (dd/mm/yyyy) whatever the language of Windows / the phone;

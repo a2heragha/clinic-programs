@@ -390,3 +390,20 @@ html.arui .daybar .dchip i{right:auto;left:-5px}
 .pcbar { position: sticky; top: 0; z-index: 60; padding: 8px 14px; font-weight: 600; text-align: center; }
 .pcbar.bad { background: var(--warn-bg); color: var(--warn); border-bottom: 1px solid var(--warn); }
 .pcbar.warn { background: var(--amber-bg); color: var(--amber); border-bottom: 1px solid var(--amber); }
+
+/* language switch next to medication lines */
+.langb{min-width:34px;padding:2px 6px;font-weight:700}
+.langb.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+/* patient screen: tabs on the left · open tab · fixed right column */
+.ptabs{display:grid;grid-template-columns:200px minmax(0,1fr) 360px;gap:10px;align-items:start}
+.ptnav{position:sticky;top:52px}
+.ptnav .pnew{justify-content:center;margin-bottom:6px;background:var(--accent);color:#fff;font-weight:700}
+.ptnav button{position:relative}
+.ptnav .ptn{margin-left:auto;font-size:11px;font-weight:700;color:var(--muted)}
+.ptnav button.on .ptn{color:#fff}
+.pside{position:sticky;top:52px;max-height:calc(100vh - 64px);overflow:auto}
+.vlist.wide .v{display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:baseline}
+.vlist.wide .v .x{white-space:normal}
+@media (max-width:1250px){.ptabs{grid-template-columns:180px minmax(0,1fr)}.ptabs .pside{grid-column:1 / -1;position:static;max-height:none}}
+@media (max-width:820px){.ptabs{grid-template-columns:1fr}.ptnav{position:static;flex-direction:row;overflow-x:auto}}

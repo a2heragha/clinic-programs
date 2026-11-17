@@ -32,7 +32,11 @@ const AR = {
 const EN = { Backquote: ['`', '~'], Minus: ['-', '_'], Equal: ['=', '+'], BracketLeft: ['[', '{'], BracketRight: [']', '}'], Backslash: ['\\', '|'],
   Semicolon: [';', ':'], Quote: ["'", '"'], Comma: [',', '<'], Period: ['.', '>'], Slash: ['/', '?'] };
 for (const c of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') EN['Key' + c] = [c.toLowerCase(), c];
-document.addEventListener('focusin', e => { const t = e.target; if (t && t.dataset && t.dataset.lang === 'en+') delete t.dataset.cur; }, true);
+document.addEventListener('focusin', e => { const t = e.target; if (t && t.dataset && t.dataset.lang === 'en+') { if (t.dataset.keepcur) delete t.dataset.keepcur; else delete t.dataset.cur; langMark(t); } }, true);
+/* the small ع / EN button next to a mixed field shows (and switches) the language being typed */
+function langMark(t) { const b = t && t.parentNode && t.parentNode.querySelector('[data-langb]'); if (b) { const ar = t.dataset.cur === 'ar'; b.textContent = ar ? 'ع' : 'EN'; b.classList.toggle('on', ar); } }
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-langb]'); if (!b) return; e.preventDefault();
+  const t = b.parentNode.querySelector('[data-lang="en+"]'); if (!t) return; t.dataset.cur = t.dataset.cur === 'ar' ? 'en' : 'ar'; t.dataset.keepcur = '1'; t.focus(); langMark(t); });
 /* Windows Arabic layout: some keys (B = لا, T/G/Shift-B = لإ/لأ/لآ) emit TWO characters. We cancel the keydown, but the 2nd
    character still arrives on its own (keypress / beforeinput / a code-less keydown) → "bا", "bl"… Swallow any native
    insertion that follows a key we already translated, until the next real key. */
@@ -46,7 +50,7 @@ document.addEventListener('keydown', e => {
   if ((!e.code || e.code === 'Unidentified' || e.key === 'Unidentified') && kbSwallow(e)) return;
   if (!/^(Shift|Alt|Control|Meta|CapsLock)$/.test(e.key)) KB_PEND = 0;
   if (t && t.dataset && t.dataset.lang === 'en+' && ((e.key === 'Shift' && (e.altKey || e.ctrlKey)) || ((e.key === 'Alt' || e.key === 'Control') && e.shiftKey))) {
-    t.dataset.cur = t.dataset.cur === 'ar' ? 'en' : 'ar'; toast(t.dataset.cur === 'ar' ? 'Typing: Arabic' : 'Typing: English'); return;
+    t.dataset.cur = t.dataset.cur === 'ar' ? 'en' : 'ar'; langMark(t); toast(t.dataset.cur === 'ar' ? 'Typing: Arabic' : 'Typing: English'); return;
   }
   let lang = t && t.dataset && t.dataset.lang;
   if (!lang && t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /^(text|search|tel|)$/.test(t.getAttribute('type') || '')))) lang = 'en';   // every field is English unless marked Arabic
@@ -101,6 +105,7 @@ function toast(msg, err) {
   const t = $('#toast'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : '');
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.add('hidden'), err ? 5000 : 2200);
 }
+async function waitQueue() { while (Q.running || Q.items.length) await sleep(100); }
 function modal(html, onClose) {
   $('#mbox').innerHTML = html; $('#modal').classList.remove('hidden');
   const close = () => { $('#modal').classList.add('hidden'); $('#mbox').innerHTML = ''; document.removeEventListener('keydown', k, true); onClose && onClose(); };
@@ -427,7 +432,7 @@ async function viewPatientForm(v, pid, params = {}) {
     ${dr ? `<div class="row" style="margin-top:10px;align-items:start">
       <label class="grow">Chronic diseases <span class="muted">(one per line)</span><textarea id="f_chronic" rows="3" data-lang="en">${esc(p.chronic || '')}</textarea></label>
       <label class="grow">Allergies <span class="muted">(one per line)</span><textarea id="f_allergies" rows="3" data-lang="en" style="color:var(--warn);font-weight:600">${esc(p.allergies || '')}</textarea></label>
-      <label class="grow">Regular medications<textarea id="f_long_meds" rows="3" data-lang="en" dir="auto">${esc(p.long_meds || '')}</textarea></label></div>
+      <label class="grow">Regular medications<textarea id="f_long_meds" rows="3" data-lang="en+" dir="auto" title="Alt+Shift: Arabic / English">${esc(p.long_meds || '')}</textarea></label></div>
     <div class="row" style="margin-top:8px;align-items:start">
       <label>Smoking<select id="f_smoking">${['', 'Never', 'Current', 'Ex-smoker'].map(x => `<option${p.smoking === x ? ' selected' : ''}>${x}</option>`).join('')}</select></label>
       <label>Alcohol<select id="f_alcohol">${['', 'No', 'Occasional', 'Regular'].map(x => `<option${p.alcohol === x ? ' selected' : ''}>${x}</option>`).join('')}</select></label>
@@ -503,6 +508,20 @@ function visitChanged(k, val) {
   clearTimeout(VIS.timer); VIS.timer = setTimeout(flushVisit, 700);
 }
 
+/* patient screen: tabs on the left, the open tab in the middle, a fixed column on the right (due items + summary) */
+const PT_TABS = [['visit', 'Visit', 'tpl'], ['hist', 'All visits', 'history'], ['labs', 'Labs & trends', 'labs'], ['files', 'Investigation files', 'pdf'], ['wt', 'Weight & BMI', 'scale'], ['fam', 'Family history', 'family']];
+let PT_TAB = 'visit', PT_PID = null;
+function ptShow(k) {
+  if (!PT_TABS.some(t => t[0] === k)) k = 'visit';
+  PT_TAB = k;
+  $$('[data-pt]').forEach(b => b.classList.toggle('on', b.dataset.pt === k));
+  $$('.ptmain [data-pane]').forEach(d => d.classList.toggle('hidden', d.dataset.pane !== k));
+}
+function ptCounts() {
+  if (!P) return;
+  const set = (k, n) => { const e = $('#ptn_' + k); if (e) e.textContent = n ? n : ''; };
+  set('hist', P.visits.length); set('labs', new Set(P.labs.map(l => l.code)).size); set('files', (P.files || []).length);
+}
 async function viewPatient(v, pid, params) {
   const d = await api('GET', '/api/patient/' + pid);
   if (!d) { v.innerHTML = '<div class="card">Patient not found.</div>'; return; }
@@ -524,11 +543,25 @@ async function viewPatient(v, pid, params) {
       ${lines(p.long_meds).length ? `<span class="flag meds" title="${esc(p.long_meds)}">Regular meds: ${lines(p.long_meds).length}</span>` : ''}
       ${p.personal_note ? `<span class="flag smoke ar" title="Personal note">🔒 ${esc(p.personal_note)}</span>` : ''}
     </div><div class="famline" id="famLine"></div><div id="linker" class="linker hidden"></div></div>
-  <div class="pgrid">
-    <div class="card"><h3>Visits<span class="sp"></span><button class="primary small" id="newV">+ New visit</button></h3><div class="vlist" id="vlist"></div></div>
-    <div id="vedit"></div>
-    <div class="side"><div class="card due" id="dueCard"></div><div class="card sum" id="summary"></div><div class="card" id="wtCard"></div><div class="card" id="famHx"></div><div class="card" id="filesCard"></div><div class="card" id="labsCard"></div></div>
+  <div class="ptabs">
+    <nav class="vtabs card ptnav">
+      <button class="primary pnew" id="newV" title="Alt+N">${ic('new')}<span>New visit</span></button>
+      ${PT_TABS.map(([k, l, i]) => `<button data-pt="${k}">${ic(i)}<span>${l}</span><b class="ptn" id="ptn_${k}"></b></button>`).join('')}
+    </nav>
+    <div class="ptmain">
+      <div data-pane="visit"><div id="vedit"></div></div>
+      <div data-pane="hist"><div class="card"><h3>All visits<span class="sp"></span><span class="muted small" style="text-transform:none">click a visit to open it</span></h3><div class="vlist wide" id="vlist"></div></div></div>
+      <div data-pane="labs"><div class="card" id="labsCard"></div></div>
+      <div data-pane="files"><div class="card" id="filesCard"></div></div>
+      <div data-pane="wt"><div class="card" id="wtCard"></div></div>
+      <div data-pane="fam"><div class="card" id="famHx"></div></div>
+    </div>
+    <div class="side pside"><div class="card due" id="dueCard"></div><div class="card sum" id="summary"></div></div>
   </div>`;
+  $$('[data-pt]').forEach(b => b.onclick = () => ptShow(b.dataset.pt));
+  if (PT_PID !== pid || (params.v && PT_TAB === 'hist')) PT_TAB = 'visit';
+  PT_PID = pid;
+  ptShow(PT_TAB); ptCounts();
   $('#editP').onclick = () => location.hash = '#/edit/' + pid;
   $('#mergeP').onclick = () => mergeDialog(p);
   $('#expP').onclick = () => exportFile();
@@ -593,7 +626,7 @@ function renderVisitList(vid) {
   $('#vlist').innerHTML = P.visits.map(x => `<div class="v${x.id === vid ? ' on' : ''}${x.legacy ? ' legacy' : ''}" data-v="${x.id}">
     <div class="d">${dmy(x.date)} <span class="muted small" style="font-weight:400">${ago(x.date)}</span></div>
     <div class="x" dir="auto">${esc((x.diagnosis || x.complaint || x.notes || '').split('\n')[0] || '—')}</div></div>`).join('') || '<div class="muted small">—</div>';
-  $('#vlist').onclick = e => { const it = e.target.closest('[data-v]'); if (it) location.hash = '#/p/' + P.patient.id + '?v=' + it.dataset.v; };
+  $('#vlist').onclick = e => { const it = e.target.closest('[data-v]'); if (!it) return; PT_TAB = 'visit'; const h = '#/p/' + P.patient.id + '?v=' + it.dataset.v; if (location.hash === h) ptShow('visit'); else location.hash = h; };
 }
 
 function openVisit(vid) {
@@ -671,7 +704,7 @@ function openVisit(vid) {
   if (tn) tn.onclick = () => { const ta = $('#notesTa', root); const show = ta.style.display === 'none'; ta.style.display = show ? '' : 'none'; tn.textContent = show ? 'Hide original old note' : 'Show original old note'; };
   if (today && !x.complaint && !x.legacy) setTimeout(() => { const f = $('[data-k=bp_sys]', root); f && f.focus(); }, 50);
 }
-async function reloadPatient() { const vid = VIS.id; P = await api('GET', '/api/patient/' + P.patient.id); renderVisitList(vid); renderSummary(vid); renderLabs(); renderFiles(); renderWeight(); renderFamHx(); vitalsChips(); }
+async function reloadPatient() { const vid = VIS.id; P = await api('GET', '/api/patient/' + P.patient.id); renderVisitList(vid); renderSummary(vid); renderLabs(); renderFiles(); renderWeight(); renderFamHx(); vitalsChips(); ptCounts(); }
 
 /* ------------------------------------------------------------ attached investigations (image / PDF) */
 function renderFiles() {
@@ -724,7 +757,7 @@ function fileDialog(f) {
 function currentMeds() { return $$('#meds input').map(i => i.value.trim()).filter(Boolean); }
 function renderMeds(list) {
   const box = $('#meds');
-  box.innerHTML = list.concat(['']).map((m, i) => `<div class="m"><span class="n">${i + 1}.</span><input value="${esc(m)}" data-lang="en" dir="auto" placeholder="${i === list.length ? 'Type a drug — previous prescriptions are suggested' : ''}"><button class="small" data-mu="${i}" title="Move up">↑</button><button class="small danger" data-md="${i}" title="Remove">✕</button></div>`).join('');
+  box.innerHTML = list.concat(['']).map((m, i) => `<div class="m"><span class="n">${i + 1}.</span><input value="${esc(m)}" data-lang="en+" dir="auto" placeholder="${i === list.length ? 'Type a drug — previous prescriptions are suggested · ع / Alt+Shift: Arabic instructions' : ''}"><button class="small langb" data-langb tabindex="-1" title="Type Arabic / English (Alt+Shift)">EN</button><button class="small" data-mu="${i}" title="Move up">↑</button><button class="small danger" data-md="${i}" title="Remove">✕</button></div>`).join('');
   $$('input', box).forEach((inp, i) => {
     combo(inp, q => matchList(L.drugs || [], q, 14), pick => { inp.value = pick; onMedEdit(i, true); });
     inp.addEventListener('input', () => onMedEdit(i));
@@ -877,46 +910,81 @@ function chartDialog(code) {
   $$('[data-dl]').forEach(b => b.onclick = async () => { await api('DELETE', '/api/lab/' + b.dataset.dl); P.labs = P.labs.filter(l => l.id !== +b.dataset.dl); renderLabs(); close(); chartDialog(code); });
 }
 function addLabsDialog(date) {
+  /* every result is saved by itself as soon as it is typed (no Save button); a test with a value moves up to "Entered" */
   const tests = (L.lab_tests || []).filter(t => t.code !== 'EGFR');
-  const groups = {}; tests.forEach(t => (groups[t.grp] = groups[t.grp] || []).push(t));
-  const close = modal(`<h2>Add lab results<span class="sp"></span><label class="small">Test date <input type="date" id="lDate" value="${date}"></label><button data-close>✕</button></h2>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:4px 16px">
-    ${Object.entries(groups).map(([g, ts]) => `<div><div class="muted small" style="font-weight:700;margin-top:6px">${esc(g)}</div>${ts.map(t => `<div class="row" style="align-items:center;flex-wrap:nowrap;margin:2px 0"><span style="flex:1;font-size:13px">${esc(t.name)}</span><input data-c="${t.code}" inputmode="decimal" style="width:80px;text-align:right"><span class="muted small" style="width:70px">${esc(t.unit || '')}</span></div>`).join('')}</div>`).join('')}
+  const groups = {}; tests.forEach(t => (groups[t.grp || 'Other'] = groups[t.grp || 'Other'] || []).push(t));
+  const row = t => `<div class="row lrow" data-row="${t.code}" style="align-items:center;flex-wrap:nowrap;margin:2px 0"><span style="flex:1;font-size:13px">${esc(t.name)}</span><input data-c="${t.code}" inputmode="decimal" dir="auto" style="width:80px;text-align:right"><span class="muted small" style="width:70px">${esc(t.unit || '')}</span><span class="lst small" style="width:18px"></span></div>`;
+  let D = date, changed = false;
+  const flushAll = () => Object.values(TM).forEach(f => f());
+  const TM = {};
+  const close0 = modal(`<h2>Add lab results<span class="sp"></span><label class="small">Test date <input type="date" id="lDate" value="${date}"></label><button data-close>✕</button></h2>
+    <div id="lDone" class="hidden" style="margin-bottom:8px;padding:6px 8px;border-radius:8px;background:var(--accent-2)"><div class="muted small" style="font-weight:700">Entered — saved automatically</div><div id="lDoneList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:2px 16px"></div></div>
+    <div id="lAll" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:4px 16px">
+    ${Object.entries(groups).map(([g, ts]) => `<div data-g="${esc(g)}"><div class="muted small" style="font-weight:700;margin-top:6px">${esc(g)}</div>${ts.map(row).join('')}</div>`).join('')}
     </div>
     <div class="muted small" style="font-weight:700;margin-top:12px">Other tests <span style="font-weight:400">— any test not in the list above (it is added to the list for next time)</span></div>
     <table class="t oth"><thead><tr><th>Test name</th><th>Result</th><th>Unit</th><th>Normal from</th><th>to</th><th></th></tr></thead><tbody id="othT"></tbody></table>
     <button class="small" id="othAdd" style="margin-top:4px">+ Another test</button>
-    <div class="foot"><span class="muted small" style="margin-right:auto">Only filled boxes are saved. Tab moves to the next box.</span><button data-close>Cancel</button><button class="primary" id="lSave">Save results</button></div>`);
+    <div class="foot"><span class="muted small" id="lInfo" style="margin-right:auto">Each result is saved as soon as you leave its box. Tab moves to the next box.</span><button class="primary" data-close>Done</button></div>`, () => { flushAll(); setTimeout(async () => { await waitQueue(); if (changed) { toast('Results saved'); reloadPatient(); } }, 60); });
+  const saved = {};          // code → lab id already stored for this dialog
+  const mark = (code, st) => { const s = $(`[data-row="${code}"] .lst`, $('#mbox')); if (s) { s.textContent = st === 'ok' ? '✓' : st === 'err' ? '!' : '…'; s.style.color = st === 'err' ? 'var(--warn)' : 'var(--ok, #1e7a46)'; } };
+  const place = inp => {      // filled → top list, emptied → back to its group
+    const r = inp.closest('[data-row]'); if (!r) return;
+    const t = tests.find(x => x.code === r.dataset.row) || {};
+    if (inp.value.trim()) $('#lDoneList').appendChild(r);
+    else { const g = $(`[data-g="${CSS.escape(t.grp || 'Other')}"]`, $('#mbox')); if (g) g.appendChild(r); }
+    $('#lDone').classList.toggle('hidden', !$('#lDoneList').children.length);
+  };
+  const store = async (code, value) => {
+    const d = D;
+    try {
+      mark(code, 'busy');
+      if (saved[code] && value === '') { await api('DELETE', '/api/lab/' + saved[code]); delete saved[code]; }
+      else if (saved[code]) await api('PUT', '/api/lab/' + saved[code], { value, date: d });
+      else if (value !== '') saved[code] = (await api('POST', '/api/lab', { patient_id: P.patient.id, visit_id: VIS.id, date: d, items: [{ code, value }] })).ids[0];
+      changed = true; mark(code, value === '' ? '' : 'ok');
+    } catch (e) { mark(code, 'err'); toast(e.message, true); }
+  };
+  $$('#mbox [data-c]').forEach(i => {
+    const c = i.dataset.c; let last = '';
+    const commit = () => { delete TM[c]; const v = i.value.trim(); if (v === last) return; last = v; enqueue(() => store(c, v)); };
+    let tm; i.addEventListener('input', () => { clearTimeout(tm); TM[c] = () => { clearTimeout(tm); commit(); }; tm = setTimeout(commit, 900); });
+    i.addEventListener('change', () => { clearTimeout(tm); commit(); place(i); });
+  });
+  $('#lDate').addEventListener('change', () => { const d = D = $('#lDate').value; Object.entries(saved).forEach(([c, id]) => enqueue(() => api('PUT', '/api/lab/' + id, { date: d }))); changed = true; });
   const othRow = () => {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td><input data-o="name" data-lang="en" placeholder="e.g. Anti-CCP" style="width:100%"></td><td><input data-o="value" data-lang="en" style="width:90px" placeholder="value or text"></td>
-      <td><input data-o="unit" data-lang="en" style="width:80px"></td><td><input data-o="low" inputmode="decimal" style="width:65px"></td><td><input data-o="high" inputmode="decimal" style="width:65px"></td><td><button class="small danger" data-ox>✕</button></td>`;
+      <td><input data-o="unit" data-lang="en" style="width:80px"></td><td><input data-o="low" inputmode="decimal" style="width:65px"></td><td><input data-o="high" inputmode="decimal" style="width:65px"></td><td><span class="lst small"></span> <button class="small danger" data-ox>✕</button></td>`;
     $('#othT').appendChild(tr);
     const nm = $('[data-o=name]', tr);
     combo(nm, q => (L.lab_tests || []).filter(t => norm(t.name).includes(norm(q)) || t.code.toLowerCase().includes(q.toLowerCase())).slice(0, 10).map(t => ({ label: t.name, hint: t.unit || '', t })), x => {
       nm.value = x.t.name; $('[data-o=unit]', tr).value = x.t.unit || ''; $('[data-o=low]', tr).value = x.t.low != null ? x.t.low : ''; $('[data-o=high]', tr).value = x.t.high != null ? x.t.high : ''; $('[data-o=value]', tr).focus(); });
-    $('[data-ox]', tr).onclick = () => tr.remove();
+    const go = () => enqueue(async () => {      // other test: reuse a test of the same name, or create it — then save the result
+      const g = k => $(`[data-o=${k}]`, tr).value.trim(), name = g('name'), val = g('value');
+      if (!name) return;
+      const ex = (L.lab_tests || []).find(t => norm(t.name) === norm(name) || t.code === name.toUpperCase());
+      const code = ex ? ex.code : (name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 24) || 'TEST');
+      const meta = { name }; if (g('unit')) meta.unit = g('unit'); if (g('low')) meta.low = g('low'); if (g('high')) meta.high = g('high'); if (!ex) meta.grp = 'Other';
+      try {
+        await api('PUT', '/api/lab_test/' + encodeURIComponent(code), meta);
+        if (!ex) await loadLists();
+        const prev = tr.dataset.code; if (prev && prev !== code && tr.dataset.id) { await api('DELETE', '/api/lab/' + tr.dataset.id); delete tr.dataset.id; }
+        tr.dataset.code = code;
+        if (tr.dataset.id && !val) { await api('DELETE', '/api/lab/' + tr.dataset.id); delete tr.dataset.id; }
+        else if (tr.dataset.id) await api('PUT', '/api/lab/' + tr.dataset.id, { value: val, date: D });
+        else if (val) tr.dataset.id = (await api('POST', '/api/lab', { patient_id: P.patient.id, visit_id: VIS.id, date: D, items: [{ code, value: val }] })).ids[0];
+        if (tr.dataset.id) saved['oth:' + tr.dataset.id] = +tr.dataset.id;
+        changed = true; $('.lst', tr).textContent = val ? '✓' : '';
+      } catch (e) { $('.lst', tr).textContent = '!'; toast(e.message, true); }
+    });
+    $$('input', tr).forEach(i => i.addEventListener('change', go));
+    $('[data-ox]', tr).onclick = () => { if (tr.dataset.id) enqueue(() => api('DELETE', '/api/lab/' + tr.dataset.id)); changed = changed || !!tr.dataset.id; tr.remove(); };
     return tr;
   };
   othRow(); $('#othAdd').onclick = () => $('[data-o=name]', othRow()).focus();
   $('[data-c]', $('#mbox')).focus();
-  $('#lSave').onclick = async () => {
-    const items = $$('#mbox [data-c]').filter(i => i.value.trim()).map(i => ({ code: i.dataset.c, value: i.value.trim() }));
-    for (const tr of $$('#othT tr')) {     // other tests: reuse a test of the same name, or create it
-      const g = k => $(`[data-o=${k}]`, tr).value.trim(), name = g('name'), val = g('value');
-      if (!name || !val) continue;
-      const ex = (L.lab_tests || []).find(t => norm(t.name) === norm(name) || t.code === name.toUpperCase());
-      const code = ex ? ex.code : (name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 24) || 'TEST') + (ex ? '' : '');
-      const meta = { name };
-      if (g('unit')) meta.unit = g('unit'); if (g('low')) meta.low = g('low'); if (g('high')) meta.high = g('high'); if (!ex) meta.grp = 'Other';
-      await api('PUT', '/api/lab_test/' + encodeURIComponent(code), meta);
-      items.push({ code, value: val });
-    }
-    if (!items.length) return close();
-    await loadLists();
-    await api('POST', '/api/lab', { patient_id: P.patient.id, visit_id: VIS.id, date: $('#lDate').value, items });
-    close(); toast(items.length + ' results saved'); reloadPatient();
-  };
+  return close0;
 }
 function mergeDialog(p) {
   const close = modal(`<h2>Merge a duplicate file into <span class="ar">${esc(p.name)}</span><span class="sp"></span><button data-close>✕</button></h2>
@@ -932,7 +1000,7 @@ function mergeDialog(p) {
 function templateDialog(t) {
   const close = modal(`<h2>${t.id ? 'Edit' : 'New'} template<span class="sp"></span><button data-close>✕</button></h2>
     <div class="row"><label class="grow">Template name<input id="tn" data-lang="en" dir="auto" value="${esc(t.name || '')}"></label><label class="grow">Adds diagnosis (optional)<input id="td" data-lang="en" value="${esc(t.diagnosis || '')}"></label></div>
-    <label class="small muted" style="display:block;margin-top:8px">Medication lines (one per line)<textarea id="tl" rows="7" data-lang="en" dir="auto">${esc((t.lines || []).join('\n'))}</textarea></label>
+    <label class="small muted" style="display:block;margin-top:8px">Medication lines (one per line)<textarea id="tl" rows="7" data-lang="en+" dir="auto" title="Alt+Shift: Arabic / English">${esc((t.lines || []).join('\n'))}</textarea></label>
     <label class="small muted" style="display:block;margin-top:8px">Adds plan / advice (optional)<textarea id="tp" rows="2" data-lang="en" dir="auto">${esc(t.plan || '')}</textarea></label>
     <div class="row" style="margin-top:8px"><label class="grow">Adds complaint (S) — visit template<textarea id="tc" rows="2" data-lang="en" dir="auto">${esc(t.complaint || '')}</textarea></label><label class="grow">Adds exam (O)<textarea id="te" rows="2" data-lang="en" dir="auto">${esc(t.exam || '')}</textarea></label></div>
     <div class="row" style="margin-top:8px"><label>Follow-up after (days)<input id="tf" data-lang="en" inputmode="numeric" style="width:90px" value="${esc(t.follow_days || '')}"></label><span class="small muted" style="align-self:end">sets the follow-up date (and the automatic appointment) when the visit has none</span></div>
@@ -1004,8 +1072,9 @@ function rxLayoutDef(pre) {
   const n = k => +L.meta[k] || 0;
   if (pre) {   // older single settings are used as the starting point
     const y = (n('rx_line_mm') || 55) - 4.3, top = n('rx_top_mm') || 80, bot = n('rx_bottom_mm') || 27, side = n('rx_side_mm') || 14, pt = n('rx_font_pt') || 12;
-    return { name: { x: 55, y, w: 68, font: 'Tahoma', size: 12, bold: 1, align: 'right' }, age: { x: 9, y, w: 13, font: 'Tahoma', size: 12, bold: 1, align: 'center' },
-      date: { x: 23, y, w: 27, font: 'Tahoma', size: 12, bold: 1, align: 'center' }, body: { x: side, y: top, w: 148 - 2 * side, h: 210 - bot - top, font: 'Segoe UI', size: pt, bold: 0, lh: 1.45 },
+    // Dr. Zakaria's measured layout (2026-11-17) is the default for the pre-printed sheet
+    return { name: { x: 48, y: 20, w: 68, font: 'Tahoma', size: 12, bold: 1, align: 'right' }, age: { x: 9, y: 20, w: 13, font: 'Tahoma', size: 12, bold: 1, align: 'center' },
+      date: { x: 28, y: 20, w: 27, font: 'Tahoma', size: 9.5, bold: 1, align: 'center' }, body: { x: 14, y: 50, w: 120, h: 103, font: 'Segoe UI', size: 12, bold: 0, lh: 1.45 },
       rx: { x: 7, y: 62, size: 34, show: 0 } };
   }
   return { name: { x: 75, y: 51.5, w: 45, font: 'Sheet Arabic', size: 12.5, bold: 1, align: 'right' }, age: { x: 8.6, y: 51.5, w: 14.7, font: 'Tahoma', size: 11, bold: 1, align: 'center' },
@@ -1249,7 +1318,7 @@ async function viewCalc(v, params) {
     const lab = c => { const l = latestLab(c); return l ? l.value : ''; };
     const age = ageAt(d.patient, x.date);
     pre = { w: x.weight || '', h: x.height || d.patient.height || '', sex: d.patient.gender || '', age: age || '', cr: lab('CREAT'), tc: lab('TC'), hdl: lab('HDL'), tg: lab('TG'), g: lab('FBS'),
-      ca: lab('CA'), alb: lab('ALB'), ast: lab('AST'), alt: lab('ALT'), plt: lab('PLT'), bili: lab('TBIL'), inr: lab('INR'), na: lab('NA'), hr: x.hr || '' };
+      ca: lab('CA'), alb: lab('ALB'), ast: lab('AST'), alt: lab('ALT'), plt: lab('PLT'), bili: lab('TBIL'), inr: lab('INR'), na: lab('NA'), hr: x.hr || '', hb: lab('HB') };
     const lines = (d.patient.chronic || '').toLowerCase();
     pre.htn = /hypertens|\bht\b|htn/.test(lines); pre.dm = /diabet|\bdm\b/.test(lines); pre.sbp = (d.visits.find(y => y.bp_sys) || {}).bp_sys || ''; pre.trt = pre.htn; pre.smk = /^current/i.test(d.patient.smoking || ''); pre.chf = /heart failure/.test(lines); pre.e = age > 65; pre.a = age >= 65;
   }
@@ -1448,11 +1517,29 @@ async function showSetTab(tab) {
     $('#tNew').onclick = () => templateDialog({});
     $$('[data-t]').forEach(tr => tr.onclick = () => templateDialog(L.templates.find(t => t.id === +tr.dataset.t)));
   } else if (tab === 'labs') {
-    pane.innerHTML = card('Lab tests — normal ranges & chart targets', `
-      <table class="t"><thead><tr><th>Test</th><th>Unit</th><th>Low</th><th>High</th><th>Target</th></tr></thead><tbody>
-      ${L.lab_tests.map(t => `<tr data-lt="${t.code}"><td>${esc(t.name)}</td><td class="muted small">${esc(t.unit || '')}</td>${['low', 'high', 'target'].map(k => `<td><input data-k="${k}" data-lang="en" value="${t[k] != null ? t[k] : ''}" style="width:70px" inputmode="decimal"></td>`).join('')}</tr>`).join('')}</tbody></table>
-      <div class="small muted">Changes save automatically.</div>`, ' style="max-width:820px"');
-    $$('[data-lt] input').forEach(i => i.addEventListener('change', () => { const code = i.closest('tr').dataset.lt; enqueue(() => api('PUT', '/api/lab_test/' + code, { [i.dataset.k]: i.value })); }));
+    const grps = [...new Set(L.lab_tests.map(t => t.grp || 'Other'))];
+    pane.innerHTML = card('Lab tests — names, normal ranges & chart targets', `
+      <div class="row" style="align-items:flex-end;flex-wrap:wrap;gap:6px;margin-bottom:10px;padding:8px;border-radius:8px;background:var(--accent-2)">
+        <label>New test<input id="ltN" data-lang="en" placeholder="e.g. Eosinophil %" style="width:190px"></label>
+        <label>Unit<input id="ltU" data-lang="en" style="width:80px"></label>
+        <label>Low<input id="ltL" inputmode="decimal" style="width:60px"></label><label>High<input id="ltH" inputmode="decimal" style="width:60px"></label>
+        <label>Group<input id="ltG" data-lang="en" list="ltGl" style="width:120px" value="Other"><datalist id="ltGl">${grps.map(g => `<option value="${esc(g)}">`).join('')}</datalist></label>
+        <button class="primary" id="ltAdd">+ Add test</button></div>
+      <table class="t"><thead><tr><th>Test</th><th>Unit</th><th>Group</th><th>Low</th><th>High</th><th>Target</th><th></th></tr></thead><tbody>
+      ${L.lab_tests.map(t => `<tr data-lt="${t.code}"><td><input data-k="name" data-lang="en" value="${esc(t.name)}" style="width:200px"></td><td><input data-k="unit" data-lang="en" value="${esc(t.unit || '')}" style="width:80px"></td><td><input data-k="grp" data-lang="en" list="ltGl" value="${esc(t.grp || '')}" style="width:110px"></td>${['low', 'high', 'target'].map(k => `<td><input data-k="${k}" data-lang="en" value="${t[k] != null ? t[k] : ''}" style="width:70px" inputmode="decimal"></td>`).join('')}<td>${t.code === 'EGFR' ? '' : `<button class="small danger" data-ltdel="${t.code}" title="Delete this test (only if no patient has a result of it)">✕</button>`}</td></tr>`).join('')}</tbody></table>
+      <div class="small muted">Changes save automatically. New tests appear in "Add lab results" and in the charts.</div>`, ' style="max-width:900px"');
+    $$('[data-lt] input').forEach(i => i.addEventListener('change', () => { const code = i.closest('tr').dataset.lt; enqueue(async () => { await api('PUT', '/api/lab_test/' + code, { [i.dataset.k]: i.value }); await loadLists(); }); }));
+    $('#ltAdd').onclick = async () => {
+      const name = $('#ltN').value.trim(); if (!name) return toast('Type the test name', true);
+      if (L.lab_tests.some(t => norm(t.name) === norm(name))) return toast('This test is already in the list', true);
+      let code = name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 24) || 'TEST';
+      while (L.lab_tests.some(t => t.code === code)) code += '_2';
+      const b = { name, unit: $('#ltU').value.trim(), grp: $('#ltG').value.trim() || 'Other' };
+      if ($('#ltL').value.trim()) b.low = $('#ltL').value.trim(); if ($('#ltH').value.trim()) b.high = $('#ltH').value.trim();
+      try { await api('PUT', '/api/lab_test/' + encodeURIComponent(code), b); await loadLists(); toast('Added: ' + name); showSetTab('labs'); } catch (e) { toast(e.message, true); }
+    };
+    $$('[data-ltdel]').forEach(bt => bt.onclick = async () => { const t = L.lab_tests.find(x => x.code === bt.dataset.ltdel); if (!confirm('Delete the test "' + t.name + '"?')) return;
+      try { await api('DELETE', '/api/lab_test/' + encodeURIComponent(t.code)); await loadLists(); showSetTab('labs'); } catch (e) { toast(e.message, true); } });
   } else if (['labreq', 'drugs', 'dx', 'areas', 'occ'].includes(tab)) {
     const cfg = { labreq: ['Lab request list', 'Suggestions shown while typing a lab request.', vocabEd('labreq'), false],
       drugs: ['Drug suggestions', 'Medication lines suggested while writing a prescription. New lines are added automatically when you prescribe them.', itemEd('drug'), false],
