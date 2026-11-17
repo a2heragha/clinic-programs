@@ -269,6 +269,56 @@ def ai_call(key, model, content, max_tokens=2000, system=None):
     return ''.join(b.get('text', '') for b in res.get('content', []) if b.get('type') == 'text')
 
 
+def _close_json(t):
+    """close a JSON text cut off at the token limit: an open string, then open [ and {"""
+    stack, ins, esc = [], False, False
+    for ch in t:
+        if ins:
+            if esc:
+                esc = False
+            elif ch == '\\':
+                esc = True
+            elif ch == '"':
+                ins = False
+        elif ch == '"':
+            ins = True
+        elif ch in '[{':
+            stack.append(ch)
+        elif ch in ']}' and stack:
+            stack.pop()
+    t = t + ('"' if ins else '')
+    t = re.sub(r',\s*$', '', t.rstrip())
+    return t + ''.join(']' if c == '[' else '}' for c in reversed(stack))
+
+
+def parse_json(txt, key=None, model=None):
+    """the JSON object in an AI answer — tolerant of trailing commas, smart quotes and a cut-off end;
+    as a last resort the model is asked once to repair its own JSON"""
+    i = txt.find('{')
+    if i < 0:
+        raise RuntimeError('The AI answer could not be read — try again')
+    raw = txt[i:]
+    j = raw.rfind('}')
+    tries = [raw[:j + 1] if j >= 0 else raw]
+    t = tries[0].replace('\u201c', '"').replace('\u201d', '"')
+    t = re.sub(r',\s*([\]}])', r'\1', t)
+    tries += [t, _close_json(re.sub(r',\s*([\]}])', r'\1', raw))]
+    for t in tries:
+        try:
+            return json.loads(t)
+        except ValueError as e:
+            err = e
+    if key:
+        fixed = ai_call(key, model, 'The following JSON is invalid (%s). Return the same content as valid JSON only, nothing else:\n\n%s' % (err, raw[:12000]), 4000)
+        k = fixed.find('{')
+        if k >= 0:
+            try:
+                return json.loads(fixed[k:fixed.rfind('}') + 1])
+            except ValueError:
+                pass
+    raise RuntimeError('The AI answer could not be read — try again')
+
+
 def ai_read_labs(key, model, data, mime, tests):
     codes = '\n'.join('%s = %s (%s)' % (t['code'], t['name'], t['unit'] or '') for t in tests)
     block = ({'type': 'document', 'source': {'type': 'base64', 'media_type': 'application/pdf', 'data': base64.b64encode(data).decode()}}
@@ -280,11 +330,8 @@ def ai_read_labs(key, model, data, mime, tests):
               'cholesterol mmol/L × 38.67, TG mmol/L × 88.57, urea mmol/L × 6.006, Hb g/L ÷ 10). '
               'Reply with JSON only, no prose: {"date":"YYYY-MM-DD or null","items":[{"code":"CODE","value":number,"as_written":"text on the sheet"}],'
               '"other":["results that have no code, as written"]}')
-    txt = ai_call(key, model, [block, {'type': 'text', 'text': prompt}], 2000)
-    m = re.search(r'\{.*\}', txt, re.S)
-    if not m:
-        raise RuntimeError('Could not read the sheet')
-    out = json.loads(m.group(0))
+    txt = ai_call(key, model, [block, {'type': 'text', 'text': prompt}], 3000)
+    out = parse_json(txt, key, model)
     valid = {t['code'] for t in tests}
     out['items'] = [i for i in out.get('items', []) if i.get('code') in valid and isinstance(i.get('value'), (int, float))]
     return out
@@ -384,12 +431,9 @@ def ai_plan(key, model, pdata, visit, family=None):
               '"plan":["short plan / advice items"],'
               '"follow_up_days":number or null}\n'
               'Max 6 items per list, most important first.')
-    txt = ai_call(key, model or PLAN_MODEL, prompt, 2500,
+    txt = ai_call(key, model or PLAN_MODEL, prompt, 4000,
                   system='You are a careful internal-medicine decision-support assistant. Suggestions are reviewed by the physician before use. Use only the given data; say when data is missing.')
-    m = re.search(r'\{.*\}', txt, re.S)
-    if not m:
-        raise RuntimeError('The AI answer could not be read — try again')
-    out = json.loads(m.group(0))
+    out = parse_json(txt, key, model or PLAN_MODEL)
     for k in ('red_flags', 'questions', 'exam', 'ddx', 'tests', 'meds', 'plan'):
         if not isinstance(out.get(k), list):
             out[k] = []
