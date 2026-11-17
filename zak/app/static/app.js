@@ -665,19 +665,24 @@ function openVisit(vid) {
     </div>
     <div class="vitals vrow">${VT.map(([k, l, e]) => `<label><span>${e} ${l}</span><input data-k="${k}" inputmode="decimal" value="${x[k] != null ? fnum(x[k], 2) : ''}"></label>`).join('')}</div>
     <div class="chips" id="vchips"></div>
-    <div class="vbody">
-      <div class="soap2">
-        ${SO.map(([k, t, l, e, ph, c]) => `<div class="sf sf-${c}"><div class="sk" title="${l}">${e}<b>${t}</b><small>${l}</small></div><div class="sv">${k === 'diagnosis' ? '<div>' : ''}<textarea data-k="${k}" rows="2" data-lang="en" dir="auto" placeholder="${ph}"${k === 'diagnosis' ? ' style="font-weight:600"' : ''}>${esc(x[k] || '')}</textarea>${k === 'diagnosis' ? '</div>' : ''}</div></div>`).join('')}
-        ${x.notes || x.legacy ? `<div class="sf sf-n"><div class="sk">🗒️<b>N</b><small>Notes</small></div><div class="sv">${x.legacy && x.notes ? `<button class="small" type="button" id="togNotes">Show original old note</button>` : ''}<textarea data-k="notes" id="notesTa" rows="3" data-lang="en" dir="auto" style="${x.legacy && x.notes ? 'display:none;margin-top:6px;background:var(--amber-bg)' : ''}">${esc(x.notes || '')}</textarea></div></div>` : ''}
-      </div>
-      <div class="rxcol">
-        <div class="rxhead"><b>℞ Medications</b><span class="sp"></span>
-          <select id="tpl" title="Ready prescriptions"><option value="">📑 Templates…</option>${(L.templates || []).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>
-          <button class="small" id="copyLast" title="Copy the medications of the previous visit">⏮️ Last</button>
-          <button class="small" id="saveTpl" title="Save these lines as a ready prescription">💾</button></div>
-        <div id="rxAlerts"></div><div class="meds" id="meds"></div>
-        <div class="fu"><label>📆 Follow-up <input type="date" data-k="follow_up" value="${x.follow_up || ''}"></label>
-          ${[7, 14, 30, 60, 90].map(n => `<button class="small" data-fu="${n}">${n < 30 ? n + 'd' : n / 30 + 'mo'}</button>`).join('')}</div>
+    <div class="vbody2">
+      <nav class="stabs">
+        ${SO.map(([k, t, l, e, ph, c]) => `<button type="button" class="st st-${c}" data-st="${k}"><i>${e}</i><span><b>${t} · ${l}</b><small class="stp" id="stp_${k}"></small></span></button>`).join('')}
+        <button type="button" class="st st-r" data-st="rx"><i>💊</i><span><b>℞ Medications</b><small class="stp" id="stp_rx"></small></span></button>
+        ${x.notes || x.legacy ? `<button type="button" class="st st-n" data-st="notes"><i>🗒️</i><span><b>N · Notes</b><small class="stp" id="stp_notes"></small></span></button>` : ''}
+      </nav>
+      <div class="spanes">
+        ${SO.map(([k, t, l, e, ph, c]) => `<section class="spane sf-${c}" data-sp="${k}"><div class="sph">${e} <b>${l}</b><small>Alt+↑ / Alt+↓ to move between sections</small></div><textarea data-k="${k}" data-lang="en" dir="auto" placeholder="${ph}"${k === 'diagnosis' ? ' style="font-weight:600"' : ''}>${esc(x[k] || '')}</textarea></section>`).join('')}
+        <section class="spane sf-r" data-sp="rx">
+          <div class="rxhead"><b>💊 ℞ Medications</b><span class="sp"></span>
+            <select id="tpl" title="Ready prescriptions"><option value="">📑 Templates…</option>${(L.templates || []).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>
+            <button class="small" id="copyLast" title="Copy the medications of the previous visit">⏮️ Last visit</button>
+            <button class="small" id="saveTpl" title="Save these lines as a ready prescription">💾 Save as template</button></div>
+          <div id="rxAlerts"></div><div class="meds" id="meds"></div>
+          <div class="fu"><label>📆 Follow-up <input type="date" data-k="follow_up" value="${x.follow_up || ''}"></label>
+            ${[7, 14, 30, 60, 90].map(n => `<button class="small" data-fu="${n}">${n < 30 ? n + 'd' : n / 30 + 'mo'}</button>`).join('')}</div>
+        </section>
+        ${x.notes || x.legacy ? `<section class="spane sf-n" data-sp="notes"><div class="sph">🗒️ <b>Notes</b></div>${x.legacy && x.notes ? `<button class="small" type="button" id="togNotes">Show original old note</button>` : ''}<textarea data-k="notes" id="notesTa" data-lang="en" dir="auto" style="${x.legacy && x.notes ? 'display:none;margin-top:6px;background:var(--amber-bg)' : ''}">${esc(x.notes || '')}</textarea></section>` : ''}
       </div>
     </div>
     <div class="actions vact">
@@ -707,6 +712,7 @@ function openVisit(vid) {
   });
   $$('[data-fu]', root).forEach(b => b.onclick = () => { const i = $('[data-k=follow_up]', root); i.value = addDays(todayISO(), +b.dataset.fu); visitChanged('follow_up', i.value); });
   renderMeds(x.meds || []);
+  stInit(root, today && !x.complaint ? 'complaint' : null);
   vitalsChips(); rxCheck();
   $('#tpl').onchange = e => { const t = (L.templates || []).find(y => y.id === +e.target.value); e.target.value = ''; if (!t) return;
     const cur = currentMeds(); t.lines.forEach(l => { if (!cur.includes(l)) cur.push(l); }); renderMeds(cur); saveMeds();
@@ -775,6 +781,37 @@ function fileDialog(f) {
   $('#fAi').onclick = () => { close(); aiReadLabs(f); };
 }
 
+/* visit sections as tabs: one section open at a time in a large panel, with a one-line preview of each on its tab */
+let ST_TAB = 'complaint';
+function stShow(k, focus) {
+  const root = $('#vedit'); if (!root || !$(`[data-sp="${k}"]`, root)) k = 'complaint';
+  ST_TAB = k;
+  $$('[data-st]', root).forEach(b => b.classList.toggle('on', b.dataset.st === k));
+  $$('[data-sp]', root).forEach(p => p.classList.toggle('on', p.dataset.sp === k));
+  if (focus) { const el = k === 'rx' ? $$('#meds input').find(i => !i.value.trim()) || $('#meds input') : $(`[data-sp="${k}"] textarea`, root); el && el.focus(); }
+}
+function stPrev() {
+  const root = $('#vedit'); if (!root) return;
+  $$('[data-sp] textarea', root).forEach(t => {
+    const el = $('#stp_' + t.dataset.k); if (!el) return;
+    const v = t.value.trim(), n = v ? v.split('\n').filter(l => l.trim()).length : 0;
+    el.textContent = v ? v.split('\n')[0].slice(0, 60) + (n > 1 ? `  (+${n - 1})` : '') : '—';
+    el.closest('.st').classList.toggle('done', !!v);
+  });
+  const m = currentMeds(), fu = $('[data-k=follow_up]', root), el = $('#stp_rx');
+  if (el) { el.textContent = (m.length ? m.length + ' drug' + (m.length > 1 ? 's' : '') : '—') + (fu && fu.value ? ' · 📆 ' + dmy(fu.value) : ''); el.closest('.st').classList.toggle('done', !!m.length); }
+}
+function stInit(root, start) {
+  $$('[data-st]', root).forEach(b => b.onclick = () => stShow(b.dataset.st, true));
+  root.addEventListener('input', stPrev); root.addEventListener('change', stPrev);
+  new MutationObserver(stPrev).observe($('#meds'), { childList: true, subtree: true });
+  root.addEventListener('keydown', e => {
+    if (!e.altKey || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
+    const ks = $$('[data-st]', root).map(b => b.dataset.st), i = ks.indexOf(ST_TAB);
+    e.preventDefault(); stShow(ks[(i + (e.key === 'ArrowDown' ? 1 : ks.length - 1)) % ks.length], true);
+  });
+  stShow(start || ST_TAB); stPrev();
+}
 function currentMeds() { return $$('#meds input').map(i => i.value.trim()).filter(Boolean); }
 function renderMeds(list) {
   const box = $('#meds');

@@ -309,7 +309,7 @@ async function aiPlan() {
   box.onclick = e => {
     const b = e.target.closest('[data-ak]'); if (!b) return;
     const it = { q: r.questions, e: r.exam, d: r.ddx, t: r.tests, m: r.meds, p: r.plan }[b.dataset.ak][+b.dataset.ai];
-    const append = (k, line) => { const el = $(`[data-k=${k}]`, root); if (!el) return; if (el.value.includes(line)) return; el.value = (el.value.trim() ? el.value.trim() + '\n' : '') + line; visitChanged(k, el.value); el.dispatchEvent(new Event('input', { bubbles: true })); };
+    const append = (k, line) => { const el = $(`[data-k=${k}]`, root); if (!el) return; if (typeof stPrev === 'function') setTimeout(stPrev); if (el.value.includes(line)) return; el.value = (el.value.trim() ? el.value.trim() + '\n' : '') + line; visitChanged(k, el.value); el.dispatchEvent(new Event('input', { bubbles: true })); };
     switch (b.dataset.ak) {
       case 'q': append('complaint', it + ' — '); break;
       case 'e': append('exam', it + ': '); break;
@@ -328,6 +328,7 @@ async function aiPlan() {
           if (i >= 0) cur[i] = it.line; else if (!cur.includes(it.line)) cur.push(it.line);
           renderMeds(cur); saveMeds();
         }
+        if (typeof stPrev === 'function') stPrev();
         break;
       }
     }
