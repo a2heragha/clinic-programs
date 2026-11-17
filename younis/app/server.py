@@ -797,6 +797,8 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         path = u.path
         qs = {k: v[0] for k, v in parse_qs(u.query).items()}
+        if path == '/api/version':        # program version for the top bar (no sign-in needed)
+            return self._send(200, updater.version_info(HERE))
         if not path.startswith('/api/'):
             return self._static(path)
         parts = [p for p in path[5:].split('/') if p]

@@ -36,5 +36,19 @@
 <script src="more.js"></script>
 <script src="ar.js"></script>
 <script src="phone.js"></script>
+<script>
+/* program version + date at the top of the screen (all clinics) */
+(function () {
+  fetch('/api/version').then(r => r.json()).then(v => {
+    if (!v || !v.version) return;
+    const d = v.date ? v.date.slice(8, 10) + '/' + v.date.slice(5, 7) + '/' + v.date.slice(0, 4) : '';
+    const el = document.createElement('div'); el.id = 'verTag';
+    el.textContent = 'v ' + v.version + (d ? ' · ' + d : ''); el.title = 'Program version (updates automatically)';
+    el.style.cssText = 'position:fixed;top:0;left:0;z-index:9999;font:10px/1.35 Tahoma,Arial,sans-serif;direction:ltr;' +
+      'background:rgba(0,0,0,.55);color:#fff;padding:0 8px;border-radius:0 0 6px 0;pointer-events:none;opacity:.8';
+    document.body.appendChild(el);
+  }).catch(() => { });
+})();
+</script>
 </body>
 </html>

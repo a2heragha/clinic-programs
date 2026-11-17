@@ -68,7 +68,13 @@ def local_version():
 def latest():
     c = CTX['cfg']
     res = _get('%s/repos/%s/commits?path=%s&sha=%s&per_page=1' % (API, c['repo'], c['path'], c.get('branch', 'main')))
-    return res[0]['sha'] if res else None
+    if not res:
+        return None
+    try:
+        CTX['latest_date'] = res[0]['commit']['committer']['date'][:10]
+    except Exception:
+        CTX['latest_date'] = None
+    return res[0]['sha']
 
 
 def stage(sha):
@@ -101,7 +107,7 @@ def stage(sha):
         for fn in fns:
             if fn.endswith('.py'):
                 py_compile.compile(os.path.join(dp, fn), cfile=os.path.join(tempfile.gettempdir(), 'upd_check.pyc'), doraise=True)
-    _write(os.path.join(dst, '.version'), {'sha': sha, 'files': n, 'at': time.strftime('%Y-%m-%d %H:%M')})
+    _write(os.path.join(dst, '.version'), {'sha': sha, 'date': CTX.get('latest_date') or time.strftime('%Y-%m-%d'), 'files': n, 'at': time.strftime('%Y-%m-%d %H:%M')})
     STATE['staged'] = sha[:7]
     return dst
 
@@ -243,6 +249,13 @@ def boot(app_dir, config_path, online=True):
         STATE['error'] = str(e)
         print(' Update check failed: %s' % e)
     return False
+
+
+def version_info(app_dir=None):
+    """{'version': short code, 'date': 'YYYY-MM-DD'} of the program files now in use — shown at the top of the screen"""
+    d = os.path.abspath(app_dir) if app_dir else CTX.get('app') or os.path.dirname(os.path.abspath(__file__))
+    v = _read(os.path.join(d, '.version'), {}) or {}
+    return {'version': (v.get('sha') or '')[:7], 'date': (v.get('date') or v.get('at') or '')[:10]}
 
 
 def healthy():
