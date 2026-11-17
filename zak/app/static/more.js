@@ -281,7 +281,7 @@ async function aiPlan() {
   const root = $('#vedit'), box = $('#aiPlanBox'); if (!root || !box) return;
   const f = k => { const el = $(`[data-k=${k}]`, root); return el ? el.value : ''; };
   const body = { patient_id: P.patient.id, visit_id: VIS.id, meds: currentMeds() };
-  ['complaint', 'exam', 'diagnosis', 'plan', 'bp_sys', 'bp_dia', 'hr', 'temp', 'spo2', 'rbs', 'weight', 'waist'].forEach(k => body[k] = f(k));
+  ['complaint', 'exam', 'diagnosis', 'plan', 'imaging', 'bp_sys', 'bp_dia', 'hr', 'temp', 'spo2', 'rbs', 'weight', 'waist'].forEach(k => body[k] = f(k));
   box.innerHTML = `<div class="aip card"><h3>${ic('spark')} AI suggestions for today</h3><div class="muted">Reading the file and today's entries… (10–30 seconds)</div></div>`;
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   let r; try { r = await api('POST', '/api/ai_plan', body); } catch (e) { box.innerHTML = `<div class="aip card" style="color:var(--warn)">${esc(e.message)}</div>`; return; }

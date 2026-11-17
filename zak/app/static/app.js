@@ -509,7 +509,7 @@ function visitChanged(k, val) {
 }
 
 /* patient screen: tabs on the left, the open tab in the middle, a fixed column on the right (due items + summary) */
-const PT_TABS = [['visit', 'Visit', 'tpl'], ['hist', 'All visits', 'history'], ['labs', 'Labs & trends', 'labs'], ['files', 'Investigation files', 'pdf'], ['wt', 'Weight & BMI', 'scale'], ['fam', 'Family history', 'family']];
+const PT_TABS = [['visit', 'Visit', '🩺'], ['hist', 'All visits', '🗂️'], ['labs', 'Labs & trends', '🧪'], ['files', 'Investigation files', '📎'], ['wt', 'Weight & BMI', '⚖️'], ['fam', 'Family history', '👪']];
 let PT_TAB = 'visit', PT_PID = null;
 function ptShow(k) {
   if (!PT_TABS.some(t => t[0] === k)) k = 'visit';
@@ -517,6 +517,13 @@ function ptShow(k) {
   $$('[data-pt]').forEach(b => b.classList.toggle('on', b.dataset.pt === k));
   $$('.ptmain [data-pane]').forEach(d => d.classList.toggle('hidden', d.dataset.pane !== k));
 }
+/* the patient screen fills the window exactly: no page scroll, each column scrolls inside itself only if needed */
+function ptFit() {
+  const t = $('.ptabs'); if (!t) return;
+  const top = t.getBoundingClientRect().top + window.scrollY;
+  document.documentElement.style.setProperty('--ptop', Math.max(120, Math.round(top + 10)) + 'px');
+}
+window.addEventListener('resize', () => ptFit());
 function ptCounts() {
   if (!P) return;
   const set = (k, n) => { const e = $('#ptn_' + k); if (e) e.textContent = n ? n : ''; };
@@ -530,23 +537,29 @@ async function viewPatient(v, pid, params) {
   const p = d.patient;
   const vid = params.v ? +params.v : (d.visits.find(x => x.date === todayISO()) || {}).id || (d.visits[0] || {}).id;
   const lines = s => (s || '').split('\n').map(x => x.trim()).filter(Boolean);
-  v.innerHTML = `<div class="card"><div class="phead">
+  const init = (p.name || '?').trim().charAt(0), sex = p.gender === 'M' ? '♂️ Male' : p.gender === 'F' ? '♀️ Female' : '';
+  const smk = /^current/i.test(p.smoking || '') ? '🚬 Smoker' : /^ex/i.test(p.smoking || '') ? '🚭 Ex-smoker' : '';
+  v.innerHTML = `<div class="pview"><div class="card phd">
+    <div class="pav ${p.gender === 'F' ? 'f' : 'm'}">${esc(init)}</div>
+    <div class="pinfo">
       <div class="pname">${esc(p.name)}</div>
-      <div class="facts">${p.age != null ? p.age + ' y' : 'age ?'} · ${p.gender === 'M' ? 'Male' : p.gender === 'F' ? 'Female' : '—'} · ${esc(p.phone || 'no phone')} · <span class="ar">${esc(p.address || '')}</span>${p.occupation ? ' · ' + esc(p.occupation) : ''}</div>
-      <span style="flex:1"></span>
-      <span class="muted small">File #${p.id} · ${d.visits.length} visits${d.visits.length ? ' since ' + dmy(d.visits[d.visits.length - 1].date) : ''}</span>
-      <button id="editP">Edit file</button><button id="expP" class="small" title="The whole file as a PDF for a referral">${ic('pdf')} Export file</button><button id="mergeP" class="small" title="Merge a duplicate file into this one">Merge…</button></div>
-    <div class="flags">
-      ${lines(p.allergies).length ? lines(p.allergies).map(x => `<span class="flag allergy">⚠ Allergy: ${esc(x)}</span>`).join('') : '<span class="muted small">No known allergies recorded</span>'}
-      ${lines(p.chronic).map(x => `<span class="flag chronic">${esc(x)}</span>`).join('')}
-      ${/^current/i.test(p.smoking || '') ? '<span class="flag smoke">Smoker</span>' : /^ex/i.test(p.smoking || '') ? '<span class="flag smoke">Ex-smoker</span>' : ''}
-      ${lines(p.long_meds).length ? `<span class="flag meds" title="${esc(p.long_meds)}">Regular meds: ${lines(p.long_meds).length}</span>` : ''}
+      <div class="pmeta">${p.age != null ? `<span>🎂 ${p.age} y</span>` : ''}${sex ? `<span>${sex}</span>` : ''}${p.phone ? `<span>📞 ${esc(p.phone)}</span>` : ''}${p.address ? `<span class="ar">📍 ${esc(p.address)}</span>` : ''}${p.occupation ? `<span class="ar">💼 ${esc(p.occupation)}</span>` : ''}
+        <span class="muted">#${p.id} · ${d.visits.length} visits${d.visits.length ? ' since ' + dmy(d.visits[d.visits.length - 1].date) : ''}</span></div>
+      <div class="famline" id="famLine"></div><div id="linker" class="linker hidden"></div>
+    </div>
+    <div class="pflags">
+      ${lines(p.allergies).length ? lines(p.allergies).map(x => `<span class="flag allergy">⚠️ ${esc(x)}</span>`).join('') : '<span class="flag noall">✅ No known allergies</span>'}
+      ${lines(p.chronic).map(x => `<span class="flag chronic">🩺 ${esc(x)}</span>`).join('')}
+      ${smk ? `<span class="flag smoke">${smk}</span>` : ''}
+      ${lines(p.long_meds).length ? `<span class="flag meds" title="${esc(p.long_meds)}">💊 Regular meds: ${lines(p.long_meds).length}</span>` : ''}
       ${p.personal_note ? `<span class="flag smoke ar" title="Personal note">🔒 ${esc(p.personal_note)}</span>` : ''}
-    </div><div class="famline" id="famLine"></div><div id="linker" class="linker hidden"></div></div>
+    </div>
+    <div class="pbtns"><button id="editP" title="Edit file">✏️ Edit</button><button id="expP" title="The whole file as a PDF for a referral">📤 Export</button><button id="mergeP" title="Merge a duplicate file into this one">🔗 Merge</button></div>
+  </div>
   <div class="ptabs">
     <nav class="vtabs card ptnav">
-      <button class="primary pnew" id="newV" title="Alt+N">${ic('new')}<span>New visit</span></button>
-      ${PT_TABS.map(([k, l, i]) => `<button data-pt="${k}">${ic(i)}<span>${l}</span><b class="ptn" id="ptn_${k}"></b></button>`).join('')}
+      <button class="primary pnew" id="newV" title="Alt+N">➕ <span>New visit</span></button>
+      ${PT_TABS.map(([k, l, e]) => `<button data-pt="${k}"><i class="pte">${e}</i><span>${l}</span><b class="ptn" id="ptn_${k}"></b></button>`).join('')}
     </nav>
     <div class="ptmain">
       <div data-pane="visit"><div id="vedit"></div></div>
@@ -557,11 +570,11 @@ async function viewPatient(v, pid, params) {
       <div data-pane="fam"><div class="card" id="famHx"></div></div>
     </div>
     <div class="side pside"><div class="card due" id="dueCard"></div><div class="card sum" id="summary"></div></div>
-  </div>`;
+  </div></div>`;
   $$('[data-pt]').forEach(b => b.onclick = () => ptShow(b.dataset.pt));
   if (PT_PID !== pid || (params.v && PT_TAB === 'hist')) PT_TAB = 'visit';
   PT_PID = pid;
-  ptShow(PT_TAB); ptCounts();
+  ptShow(PT_TAB); ptCounts(); ptFit();
   $('#editP').onclick = () => location.hash = '#/edit/' + pid;
   $('#mergeP').onclick = () => mergeDialog(p);
   $('#expP').onclick = () => exportFile();
@@ -572,7 +585,8 @@ async function viewPatient(v, pid, params) {
   renderLabs();
   renderFiles();
   renderWeight(); renderFamHx();
-  if (vid) openVisit(vid); else $('#vedit').innerHTML = '<div class="card muted">No visits yet. Press <b>+ New visit</b> to start.</div>';
+  if (vid) openVisit(vid); else $('#vedit').innerHTML = '<div class="card vempty">🩺 No visits yet.<br>Press <b>➕ New visit</b> to start.</div>';
+  ptFit(); setTimeout(ptFit, 300);
   const paste = e => {   // Ctrl+V of a screenshot / scanned image attaches it to the file
     if ($('#modal').classList.contains('hidden') === false) return;
     const fs = Array.from((e.clipboardData || {}).files || []).filter(f => f.type.startsWith('image/') || f.type === 'application/pdf');
@@ -635,39 +649,45 @@ function openVisit(vid) {
   VIS.id = vid; VIS.pending = {};
   const p = P.patient;
   const today = x.date === todayISO();
-  $('#vedit').innerHTML = `<div class="card">
-    <h3>Visit ${dmy(x.date)}${x.legacy ? ' <span class="muted small" style="text-transform:none">(imported from the old program)</span>' : ''}<span class="sp"></span>
-      <label class="small muted" style="text-transform:none">Date <input type="date" data-k="date" value="${x.date}"></label>
-      <label class="small muted" style="text-transform:none">Price ×1000 <input data-k="price" inputmode="numeric" style="width:60px" title="In thousands: 15 = 15,000 IQD" value="${x.price != null ? x.price : ''}"></label>
-      <select data-k="fee_type" title="Fee" style="text-transform:none;width:auto">${[['', 'Paid'], ['review', 'Review (مراجعة)'], ['free', 'Free']].map(([k, l]) => `<option value="${k}"${(x.fee_type || '') === k ? ' selected' : ''}>${l}</option>`).join('')}</select></h3>
-    <div class="vitals">
-      ${[['bp_sys', 'BP sys'], ['bp_dia', 'BP dia'], ['hr', 'Pulse'], ['rr', 'RR'], ['temp', 'Temp °C'], ['spo2', 'SpO₂ %'], ['rbs', 'RBS mg/dL'], ['weight', 'Weight kg'], ['height', 'Height cm'], ['waist', 'Waist cm']]
-        .map(([k, l]) => `<label>${l}<input data-k="${k}" inputmode="decimal" value="${x[k] != null ? fnum(x[k], 2) : ''}"></label>`).join('')}
+  const VT = [['bp_sys', 'BP sys', '🩸'], ['bp_dia', 'BP dia', '🩸'], ['hr', 'Pulse', '💓'], ['rr', 'RR', '🌬️'], ['temp', 'Temp °C', '🌡️'], ['spo2', 'SpO₂ %', '🫁'],
+    ['rbs', 'RBS', '🍬'], ['weight', 'Wt kg', '⚖️'], ['height', 'Ht cm', '📏'], ['waist', 'Waist', '📐']];
+  const SO = [['complaint', 'S', 'Complaint', '🗣️', 'Chief complaint, history of present illness', 's'], ['exam', 'O', 'Exam', '🔍', 'Examination findings', 'o'],
+    ['diagnosis', 'A', 'Diagnosis', '🎯', 'One diagnosis per line (suggestions appear while typing)', 'a'], ['plan', 'P', 'Plan', '📋', 'Plan, investigations, advice', 'p'],
+    ['imaging', 'Im', 'Imaging', '🩻', 'X-ray, ultrasound, CT, MRI, echo — date and findings', 'i']];
+  $('#vedit').innerHTML = `<div class="card vcard">
+    <div class="vhead">
+      <span class="vdate">📅 ${dmy(x.date)}${today ? ' <b class="vtoday">Today</b>' : ` <small>${ago(x.date)}</small>`}</span>
+      ${x.legacy ? '<span class="vold">📜 imported from the old program</span>' : ''}
+      <span class="sp"></span>
+      <label class="vmini">Date <input type="date" data-k="date" value="${x.date}"></label>
+      <label class="vmini">💵 ×1000 <input data-k="price" inputmode="numeric" style="width:54px" title="In thousands: 15 = 15,000 IQD" value="${x.price != null ? x.price : ''}"></label>
+      <select data-k="fee_type" title="Fee" class="vmini">${[['', '✅ Paid'], ['review', '🔁 Review (مراجعة)'], ['free', '🎁 Free']].map(([k, l]) => `<option value="${k}"${(x.fee_type || '') === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
     </div>
+    <div class="vitals vrow">${VT.map(([k, l, e]) => `<label><span>${e} ${l}</span><input data-k="${k}" inputmode="decimal" value="${x[k] != null ? fnum(x[k], 2) : ''}"></label>`).join('')}</div>
     <div class="chips" id="vchips"></div>
-    <div class="soap">
-      <div class="k">S<small>Complaint</small></div><textarea data-k="complaint" rows="3" data-lang="en" dir="auto" placeholder="Chief complaint, history of present illness">${esc(x.complaint || '')}</textarea>
-      <div class="k">O<small>Exam</small></div><textarea data-k="exam" rows="2" data-lang="en" dir="auto" placeholder="Examination findings">${esc(x.exam || '')}</textarea>
-      <div class="k">A<small>Diagnosis</small></div><div><textarea data-k="diagnosis" rows="2" data-lang="en" placeholder="One diagnosis per line (suggestions appear while typing)" style="font-weight:600">${esc(x.diagnosis || '')}</textarea></div>
-      <div class="k">P<small>Plan</small></div><textarea data-k="plan" rows="2" data-lang="en" dir="auto" placeholder="Plan, investigations, advice">${esc(x.plan || '')}</textarea>
-      <div class="k" style="font-size:13px">Im<small>Imaging</small></div><textarea data-k="imaging" rows="2" data-lang="en" dir="auto" placeholder="X-ray, ultrasound, CT, MRI, echo — date and findings">${esc(x.imaging || '')}</textarea>
-      ${x.notes || x.legacy ? `<div class="k" style="font-size:13px">N<small>Notes</small></div><div>${x.legacy && x.notes ? `<button class="small" type="button" id="togNotes">Show original old note</button>` : ''}<textarea data-k="notes" id="notesTa" rows="${Math.min(10, Math.max(3, (x.notes || '').split('\n').length + 1))}" data-lang="en" dir="auto" style="${x.legacy && x.notes ? 'display:none;margin-top:6px;background:var(--amber-bg)' : ''}">${esc(x.notes || '')}</textarea></div>` : ''}
+    <div class="vbody">
+      <div class="soap2">
+        ${SO.map(([k, t, l, e, ph, c]) => `<div class="sf sf-${c}"><div class="sk" title="${l}">${e}<b>${t}</b><small>${l}</small></div><div class="sv">${k === 'diagnosis' ? '<div>' : ''}<textarea data-k="${k}" rows="2" data-lang="en" dir="auto" placeholder="${ph}"${k === 'diagnosis' ? ' style="font-weight:600"' : ''}>${esc(x[k] || '')}</textarea>${k === 'diagnosis' ? '</div>' : ''}</div></div>`).join('')}
+        ${x.notes || x.legacy ? `<div class="sf sf-n"><div class="sk">🗒️<b>N</b><small>Notes</small></div><div class="sv">${x.legacy && x.notes ? `<button class="small" type="button" id="togNotes">Show original old note</button>` : ''}<textarea data-k="notes" id="notesTa" rows="3" data-lang="en" dir="auto" style="${x.legacy && x.notes ? 'display:none;margin-top:6px;background:var(--amber-bg)' : ''}">${esc(x.notes || '')}</textarea></div></div>` : ''}
+      </div>
+      <div class="rxcol">
+        <div class="rxhead"><b>℞ Medications</b><span class="sp"></span>
+          <select id="tpl" title="Ready prescriptions"><option value="">📑 Templates…</option>${(L.templates || []).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>
+          <button class="small" id="copyLast" title="Copy the medications of the previous visit">⏮️ Last</button>
+          <button class="small" id="saveTpl" title="Save these lines as a ready prescription">💾</button></div>
+        <div id="rxAlerts"></div><div class="meds" id="meds"></div>
+        <div class="fu"><label>📆 Follow-up <input type="date" data-k="follow_up" value="${x.follow_up || ''}"></label>
+          ${[7, 14, 30, 60, 90].map(n => `<button class="small" data-fu="${n}">${n < 30 ? n + 'd' : n / 30 + 'mo'}</button>`).join('')}</div>
+      </div>
     </div>
-    <div class="card" style="margin:12px 0 0;background:var(--card-2)">
-      <h3>℞ Medications<span class="sp"></span>
-        <select id="tpl" style="text-transform:none"><option value="">Templates…</option>${(L.templates || []).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>
-        <button class="small" id="copyLast" title="Copy the medications of the previous visit">Copy last visit</button>
-        <button class="small" id="saveTpl">Save as template</button></h3>
-      <div id="rxAlerts"></div><div class="meds" id="meds"></div>
-      <div class="row" style="margin-top:6px"><label>Follow-up<input type="date" data-k="follow_up" value="${x.follow_up || ''}"></label>
-        ${[7, 14, 30, 60, 90].map(n => `<button class="small" data-fu="${n}">${n < 30 ? n + ' d' : n / 30 + ' mo'}</button>`).join('')}</div>
-    </div>
-    <div class="actions">
-      <button class="primary" id="pRx" title="Ctrl+P">🖨 Prescription</button>
-      <button id="pLab">Lab request</button><button id="pEcho">Echo request</button><button id="pRef">Referral</button><button id="pRep">Medical report</button><button id="pSick">Sick leave</button><button id="pAi" class="aibtn" title="AI suggestions for today from the history and what is typed now">${ic('spark')} AI suggestions</button><button id="pSum" title="Arabic summary of this visit for the patient">${ic('tpl')} Patient summary</button>
-      <button id="addLabs">+ Add lab results</button>
-      <button id="toCalc">Calculators</button>
-      <span style="flex:1"></span><button class="danger small" id="delV">Delete visit</button>
+    <div class="actions vact">
+      <button class="primary" id="pRx" title="Ctrl+P">🖨️ Prescription</button>
+      <button id="pAi" class="aibtn" title="AI suggestions for today from the history and what is typed now">✨ AI suggestions</button>
+      <button id="addLabs">🧪 + Lab results</button>
+      <button id="pLab">🧾 Lab request</button><button id="pEcho">❤️ Echo</button><button id="pRef">↗️ Referral</button><button id="pRep">📄 Report</button><button id="pSick">🛌 Sick leave</button>
+      <button id="pSum" title="Arabic summary of this visit for the patient">📝 Summary</button>
+      <button id="toCalc">🧮 Calculators</button>
+      <span style="flex:1"></span><button class="danger small" id="delV" title="Delete visit">🗑️</button>
     </div><div id="aiPlanBox"></div></div>`;
   const root = $('#vedit');
   $$('[data-k]', root).forEach(el => {
