@@ -10,6 +10,8 @@ from urllib.parse import urlparse, parse_qs
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
+import errlog         # error log in data/logs and in the database
+errlog.setup(ROOT)
 import updater          # silent update from GitHub before the program's own modules load
 if updater.boot(HERE, os.path.join(ROOT, 'config.json')) and __name__ == '__main__' and not os.environ.get('CLINIC_PHONE'):
     import subprocess
@@ -655,7 +657,7 @@ def pin_taken(conn, pin, except_id=None):
     return False
 
 
-PUBLIC = {('GET', 'me'), ('GET', 'users'), ('POST', 'login'), ('POST', 'setup'), ('POST', 'logout')}
+PUBLIC = {('POST', 'clienterror'), ('GET', 'me'), ('GET', 'users'), ('POST', 'login'), ('POST', 'setup'), ('POST', 'logout')}
 SECRETARY = {('POST', 'weight'), ('GET', 'daycounts'), ('GET', 'recall'), ('GET', 'mboot'), ('GET', 'mday'), ('GET', 'search'), ('GET', 'patient'), ('GET', 'similar'), ('GET', 'appts'), ('GET', 'lists'),
              ('POST', 'patient'), ('PUT', 'patient'), ('GET', 'family_suggest'), ('POST', 'link'), ('DELETE', 'link'), ('POST', 'appt'), ('PUT', 'appt'), ('DELETE', 'appt'), ('PUT', 'my_pin'), ('POST', 'file'), ('GET', 'pc'), ('POST', 'shutdown')}
 
@@ -721,6 +723,12 @@ class Handler(BaseHTTPRequestHandler):
                         raise ApiError('Please sign in', 401)
                     if user['role'] != 'doctor' and (method, p0) not in SECRETARY:
                         raise ApiError('Doctor only', 403)
+                if p0 == 'clienterror' and method == 'POST':      # an error in the browser
+                    errlog.log('browser', str(body.get('msg') or '')[:300], '%s\n%s\n%s' % (body.get('where') or '', body.get('stack') or '', (user or {}).get('name') or ''))
+                    return self._send(200, {'ok': True})
+                if p0 == 'errors' and method == 'GET':
+                    return self._send(200, {'pc': errlog.PC, 'ver': errlog.VER, 'rows': errlog.recent(int(qs.get('n') or 300)),
+                                            'state': {k: (v or {}).get('error') for k, v in (('sync', cloudsync.STATE), ('handoff', handoff.STATE), ('update', updater.STATE), ('backup', BACKUP_STATE))}})
                 if handoff.STATE['readonly'] and method != 'GET' and p0 not in ('login', 'logout') and p0 not in ('ai_ocr', 'ai_summary', 'ai_test', 'ai_plan'):
                     raise ApiError('البرنامج انتقل إلى الحاسبة %s — هذه الحاسبة للقراءة فقط. أعد تشغيل البرنامج هنا لاستلامه. '
                                    '(The program moved to another PC — read-only here.)' % (handoff.STATE.get('other') or 'الأخرى'), 423)
@@ -748,9 +756,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, res.data, res.mime)
             self._send(200, res, cookie=self._cookie)
         except ApiError as e:
+            if e.code >= 500 or p0.startswith('ai_'):
+                errlog.log('api', '%s /api/%s → %s' % (method, '/'.join(parts), e))
             self._send(e.code, {'error': str(e)})
         except Exception as e:
             traceback.print_exc()
+            errlog.log('server', '%s /api/%s → %s: %s' % (method, '/'.join(parts), type(e).__name__, e), traceback.format_exc())
             self._send(500, {'error': 'Server error: %s' % e})
 
     # ---------------------------------------------------------------- long jobs (no write lock held)
@@ -1271,6 +1282,8 @@ def main():
     threading.Thread(target=backup_loop, daemon=True).start()
     cloudsync.GATE = handoff.can_sync
     threading.Thread(target=cloudsync.loop, args=(connect, DB_PATH, WRITE_LOCK), daemon=True).start()
+    errlog.watch({'sync': cloudsync.STATE, 'handoff': handoff.STATE, 'update': updater.STATE, 'backup': BACKUP_STATE},
+                 connect, DB_PATH, WRITE_LOCK, can_write=lambda: not handoff.STATE['readonly'])
     if handoff.STATE['enabled']:
         threading.Thread(target=handoff.loop, daemon=True).start()
         handoff.install_close_handler()

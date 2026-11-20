@@ -6,6 +6,18 @@
 <title>Clinic</title>
 <link rel="stylesheet" href="app.css">
 <link rel="stylesheet" href="phone.css">
+<script>
+/* every error in the browser is written to the program's error log (Settings → Error log) */
+(function () {
+  const seen = {};
+  function send(msg, where, stack) {
+    const k = msg + '|' + where; if (seen[k] || Object.keys(seen).length > 50) return; seen[k] = 1;
+    try { fetch('/api/clienterror', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ msg: String(msg).slice(0, 300), where: where + ' · ' + location.hash, stack: String(stack || '').slice(0, 3000) }) }); } catch (e) { }
+  }
+  window.addEventListener('error', e => send(e.message || 'error', (e.filename || '').split('/').pop() + ':' + e.lineno + ':' + e.colno, e.error && e.error.stack));
+  window.addEventListener('unhandledrejection', e => { const r = e.reason || {}; if (r.name === 'HttpError' || r.status) return; send(r.message || String(r), 'promise', r.stack); });
+})();
+</script>
 </head>
 <body>
 <header class="top hidden" id="top">

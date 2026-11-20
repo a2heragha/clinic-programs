@@ -1430,7 +1430,7 @@ async function viewLog(v, params) {
 /* ============================================================ settings */
 const SET_TABS = [['clinic', 'Clinic'], ['look', 'Appearance'], ['print', 'Printing'], ['hours', 'Appointments'], ['users', 'Users & PINs'], ['tpl', 'Ready prescriptions'], ['ai', 'AI features'],
   ['labs', 'Lab tests'], ['labreq', 'Lab request list'], ['drugs', 'Drug suggestions'], ['dx', 'Diagnosis suggestions'], ['areas', 'Addresses'], ['occ', 'Occupations'],
-  ['dups', 'Duplicate files'], ['online', 'Online version'], ['data', 'Data & backup']];
+  ['dups', 'Duplicate files'], ['online', 'Online version'], ['data', 'Data & backup'], ['errors', 'Error log']];
 async function viewSettings(v, params = {}) {
   await loadLists();
   const dr = ME.role === 'doctor';

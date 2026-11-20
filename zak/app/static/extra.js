@@ -393,6 +393,15 @@ async function aiReadLabs(f) {
 
 /* ============================================================ extra settings tabs */
 const EXTRA_TABS = {
+  async errors(pane, card) {
+    const d = await api('GET', '/api/errors?n=400'), SRC = { server: '🖥️ Server', api: '⚙️ Request', browser: '🌐 Screen', sync: '☁️ Sync', handoff: '🔁 Hand-over', update: '⬇️ Update', backup: '💾 Backup', crash: '💥 Crash', thread: '💥 Background' };
+    const now = Object.entries(d.state).filter(([, v]) => v);
+    pane.innerHTML = card('Error log — ' + esc(d.pc) + ' · version ' + esc(d.ver || '?'), `
+      <div class="small muted" style="margin-bottom:8px">Errors of this computer. They are also kept inside the database, so they reach Google Drive with the hand-over copy and the backups.</div>
+      ${now.length ? `<div class="flag allergy" style="display:block;margin-bottom:8px">Now: ${now.map(([k, v]) => esc(SRC[k] || k) + ' — ' + esc(v)).join(' · ')}</div>` : '<div class="flag noall" style="display:inline-block;margin-bottom:8px">✅ No error right now</div>'}
+      ${d.rows.length ? `<table class="tbl"><tr><th>Time</th><th>Where</th><th>Error</th></tr>${d.rows.map((r, i) => `<tr><td class="small" style="white-space:nowrap">${esc(r.t)}</td><td class="small" style="white-space:nowrap">${esc(SRC[r.src] || r.src)}</td><td dir="auto">${esc(r.msg)}${r.detail ? ` <button class="small" data-ed="${i}">details</button><pre class="small hidden" id="ed${i}" style="white-space:pre-wrap;max-height:240px;overflow:auto">${esc(r.detail)}</pre>` : ''}</td></tr>`).join('')}</table>` : '<div class="muted">No errors recorded. 🎉</div>'}`);
+    $$('[data-ed]', pane).forEach(b => b.onclick = () => $('#ed' + b.dataset.ed).classList.toggle('hidden'));
+  },
   look(pane, card) {
     const t = themeCfg();
     pane.innerHTML = card('Appearance', `
