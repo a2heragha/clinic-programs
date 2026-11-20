@@ -1,5 +1,5 @@
 /*******************************************************************
- *  عيادة د. مهند يونس — سكربت واحد على حساب a2her.agha:
+ *  عيادة د. مهند يونس — سكربت واحد على حساب zak.clinic90:
  *    - doPost: مزامنة برنامج العيادة + النسخ الاحتياطية + التناوب بين الحاسبة والهاتف
  *    - doGet : صفحة المواعيد على الموبايل (مفتوحة لمن لديه الرابط، المواعيد فقط)
  *  النشر: Execute as = Me ، Who has access = Anyone
@@ -69,6 +69,16 @@ function showToken() {
 }
 
 // ------------------------------------------------------------------ helpers
+/* delete a file for good (Drive advanced service); without the service it goes to the bin as before */
+function drop_(f) {
+  try { Drive.Files.remove(f.getId()); } catch (e) { try { f.setTrashed(true); } catch (e2) { } }
+}
+/* the old link shows where the page moved */
+function movedPage_(mv) {
+  return HtmlService.createHtmlOutput('<div style="font:18px Tahoma,Arial;text-align:center;margin-top:20vh" dir="rtl">انتقلت الصفحة إلى رابط جديد<br><br>'
+    + '<a href="' + mv + '" target="_top" style="font-size:20px">اضغط هنا لفتحها</a><br><br><small>واحفظ الرابط الجديد بدل القديم</small></div>')
+    .setTitle('انتقلت الصفحة').addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
 function prop_(k) { return PropertiesService.getScriptProperties().getProperty(k); }
 function ss_() { return SpreadsheetApp.openById(prop_('SHEET_ID')); }
 function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
@@ -173,7 +183,7 @@ function handoff_(req) {
       const files = [], it = dir.getFiles();
       while (it.hasNext()) files.push(it.next());
       files.sort((x, y) => y.getDateCreated() - x.getDateCreated());
-      files.slice(KEEP_LIVE).forEach(x => x.setTrashed(true));
+      files.slice(KEEP_LIVE).forEach(x => drop_(x));
       return { ok: true, seq: L.seq, t: L.t };
     }
     case 'db_pull': {
@@ -190,6 +200,8 @@ function doPost(e) {
   let req;
   try { req = JSON.parse(e.postData.contents); } catch (err) { return json_({ ok: false, error: 'طلب غير صالح' }); }
   if (!req.token || req.token !== prop_('TOKEN')) return json_({ ok: false, error: 'رمز المزامنة غير صحيح' });
+  const mv = prop_('MOVED_TO');            // the clinic moved to another Google account: tell the program the new link
+  if (mv) return json_({ ok: false, moved: mv, error: 'moved' });
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -237,7 +249,7 @@ function doPost(e) {
         const it = folder.getFiles();
         while (it.hasNext()) files.push(it.next());
         files.sort((x, y) => y.getDateCreated() - x.getDateCreated());
-        files.slice(KEEP_BACKUPS).forEach(f => f.setTrashed(true));
+        files.slice(KEEP_BACKUPS).forEach(f => drop_(f));
         return json_({ ok: true, name: req.name });
       }
       default:
@@ -252,6 +264,8 @@ function doPost(e) {
 
 // ------------------------------------------------------------------ mobile page (open to anyone who has the link; appointments only)
 function doGet(e) {
+  const mv = prop_('MOVED_TO');
+  if (mv) return movedPage_(mv);
   return HtmlService.createTemplateFromFile('Index').evaluate()
     .setTitle('مواعيد العيادة')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');

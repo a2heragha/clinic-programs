@@ -1,5 +1,5 @@
 /*******************************************************************
- *  عيادة الدكتور زكريا — النسخة الأونلاين (Google) على حساب a2her.agha
+ *  عيادة الدكتور زكريا — النسخة الأونلاين (Google) على حساب zak.clinic90
  *    - رابط واحد (/exec): برنامج العيادة يزامن عليه، والموبايل يفتحه في المتصفح
  *    - السكرتير: المواعيد + تسجيل مريض جديد (عربي)
  *    - الطبيب: ملخص ملفات المرضى للقراءة فقط (English)
@@ -10,7 +10,7 @@
 const CLINIC_NAME = 'عيادة الدكتور زكريا';
 const FOLDER_NAME = 'عيادة د. زكريا';
 const ROOT_FOLDER = 'العيادات';
-const VIEWERS = ['zak.clinic90@gmail.com'];       // مشاهدة مجلد العيادة فقط
+const VIEWERS = [];                                // مشاهدة مجلد العيادة فقط (الحساب نفسه هو المالك)
 const KEEP_BACKUPS = 30;
 /******************************************************************/
 
@@ -76,6 +76,16 @@ function sheet_(ss, name, cols) {
 function showToken() { Logger.log('رمز المزامنة: ' + prop_('TOKEN')); }
 
 // ------------------------------------------------------------------ helpers
+/* delete a file for good (Drive advanced service); without the service it goes to the bin as before */
+function drop_(f) {
+  try { Drive.Files.remove(f.getId()); } catch (e) { try { f.setTrashed(true); } catch (e2) { } }
+}
+/* the old link shows where the page moved */
+function movedPage_(mv) {
+  return HtmlService.createHtmlOutput('<div style="font:18px Tahoma,Arial;text-align:center;margin-top:20vh" dir="rtl">انتقلت الصفحة إلى رابط جديد<br><br>'
+    + '<a href="' + mv + '" target="_top" style="font-size:20px">اضغط هنا لفتحها</a><br><br><small>واحفظ الرابط الجديد بدل القديم</small></div>')
+    .setTitle('انتقلت الصفحة').addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
 function prop_(k) { return PropertiesService.getScriptProperties().getProperty(k); }
 function ss_() { return SpreadsheetApp.openById(prop_('SHEET_ID')); }
 function sh_(n) { return ss_().getSheetByName(n); }
@@ -140,6 +150,8 @@ function doPost(e) {
   let req;
   try { req = JSON.parse(e.postData.contents); } catch (err) { return json_({ ok: false, error: 'Invalid request' }); }
   if (!req.token || req.token !== prop_('TOKEN')) return json_({ ok: false, error: 'Wrong sync token' });
+  const mv = prop_('MOVED_TO');            // the clinic moved to another Google account: tell the program the new link
+  if (mv) return json_({ ok: false, moved: mv, error: 'moved' });
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -274,7 +286,7 @@ function doPost(e) {
         const it = folder.getFiles();
         while (it.hasNext()) files.push(it.next());
         files.sort((x, y) => y.getDateCreated() - x.getDateCreated());
-        files.slice(KEEP_BACKUPS).forEach(f => f.setTrashed(true));
+        files.slice(KEEP_BACKUPS).forEach(f => drop_(f));
         return json_({ ok: true, name: req.name });
       }
       default:
@@ -289,6 +301,8 @@ function doPost(e) {
 
 // ------------------------------------------------------------------ the phone page
 function doGet() {
+  const mv = prop_('MOVED_TO');
+  if (mv) return movedPage_(mv);
   return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle(CLINIC_NAME)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
@@ -422,10 +436,6 @@ function lease_() {
   return Object.assign({ holder: '', name: '', beat: 0, pending: '', pending_name: '', pending_t: 0, seq: 0, t: 0, file: '', by: '' }, L);
 }
 function saveLease_(L) { PropertiesService.getScriptProperties().setProperty('LEASE', JSON.stringify(L)); }
-/* delete a file for good (Drive advanced service); without the service it goes to the bin as before */
-function drop_(f) {
-  try { Drive.Files.remove(f.getId()); } catch (e) { try { f.setTrashed(true); } catch (e2) { } }
-}
 function sub_(name) {     // sub-folder of the backup folder: 'live' (newest database) and 'files' (attached scans)
   const props = PropertiesService.getScriptProperties(), key = 'FOLDER_' + name.toUpperCase();
   const id = props.getProperty(key);
@@ -434,3 +444,37 @@ function sub_(name) {     // sub-folder of the backup folder: 'live' (newest dat
   props.setProperty(key, f.getId());
   return f;
 }
+
+/* ------------------------------------------------------------------ one-time move from the old account
+   Run importOld from the editor once, after setup: copies the newest database, the attached files and the
+   online sheet from the old script's folders (shared with this account), and continues its hand-over count. */
+const OLD = { live: '1z8Oun-bjmk-B6PLA-Hv7x2935l48pjp6', files: '1YThAtVibGdIhT6CF4fuvNqVgdlM9PiM3', sheet: '1vLaABEgUdSg2r68zK9uHXMqBcPKaGyQ2512YtYbFjaw' };
+function importOld() {
+  const props = PropertiesService.getScriptProperties();
+  // 1. newest database copy
+  const it = DriveApp.getFolderById(OLD.live).getFiles(), all = [];
+  while (it.hasNext()) all.push(it.next());
+  all.sort((x, y) => seqOf_(y) - seqOf_(x));
+  const top = all[0], seq = seqOf_(top);
+  const copy = top.makeCopy(top.getName(), sub_('live'));
+  const L = lease_();
+  Object.assign(L, { holder: '', name: '', beat: 0, pending: '', pending_name: '', pending_t: 0, seq: seq, t: Date.now(), file: copy.getId(), by: 'moved from the old account' });
+  saveLease_(L);
+  // 2. attached files
+  const have = {}, f2 = sub_('files').getFiles();
+  while (f2.hasNext()) have[f2.next().getName()] = 1;
+  let n = 0;
+  const fi = DriveApp.getFolderById(OLD.files).getFiles();
+  while (fi.hasNext()) { const f = fi.next(); if (!have[f.getName()]) { f.makeCopy(f.getName(), sub_('files')); n++; } }
+  // 3. online sheet (appointments, patients, phone registrations, doctor's view, config)
+  const src = SpreadsheetApp.openById(OLD.sheet), dst = ss_();
+  ['appointments', 'patients', 'new_patients', 'clinical', 'config'].forEach(name => {
+    const a = src.getSheetByName(name), b = dst.getSheetByName(name);
+    if (!a || !b) return;
+    const v = a.getDataRange().getValues();
+    b.clear();
+    if (v.length) b.getRange(1, 1, v.length, v[0].length).setNumberFormat('@').setValues(v);
+  });
+  Logger.log('Database copy ' + top.getName() + ' (seq ' + seq + '), ' + n + ' attached files, sheet copied ✓');
+}
+function seqOf_(f) { const m = f.getName().match(/_(\d+)\.db\.gz$/); return m ? Number(m[1]) : 0; }
