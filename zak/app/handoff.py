@@ -15,7 +15,7 @@ import base64, datetime, gzip, hashlib, json, os, shutil, socket, sqlite3, sys, 
 
 import cloudsync
 
-PUSH_EVERY = 120          # seconds between uploads (only when the database changed) — 30 after the Drive clean-up fix
+PUSH_EVERY = 30           # seconds between uploads (only when the database changed); old copies are deleted for good by the script
 ALIVE_MS = 90 * 1000      # a holder silent for longer than this is considered switched off
 HANDOVER_WAIT = 180       # seconds a starting PC waits for the other PC to upload and hand over (while that PC is still alive)
 POLL = 4                  # seconds between lease checks while waiting
