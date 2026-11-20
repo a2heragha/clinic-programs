@@ -704,6 +704,15 @@ class Handler(BaseHTTPRequestHandler):
         self._route('DELETE')
 
     def _route(self, method):
+        t0 = time.time()
+        try:
+            return self._route2(method)
+        finally:
+            dt = time.time() - t0
+            if dt > 4 and '/api/ai_' not in self.path and '/api/restore' not in self.path:     # slow answers: what makes the program "freeze"
+                errlog.log('slow', '%s %s took %.1f s' % (method, self.path.split('?')[0], dt), 'write lock busy: %s' % WRITE_LOCK.locked())
+
+    def _route2(self, method):
         u = urlparse(self.path)
         qs = {k: v[0] for k, v in parse_qs(u.query).items()}
         if u.path == '/api/version':        # program version for the top bar (no sign-in needed)

@@ -149,8 +149,15 @@ def push_db(force=False, final=False):
                 st['clean'] = True
                 save_local(db_path, st)
             return False
+        t0 = time.time()
         with CTX['write_lock']:                 # a consistent copy: no write in the middle
             data = snapshot(db_path)
+        if time.time() - t0 > 3:
+            try:
+                import errlog
+                errlog.log('slow', 'copying the database for upload held saving for %.1f s' % (time.time() - t0))
+            except Exception:
+                pass
         r = _call('db_push', timeout=300, data=base64.b64encode(data).decode('ascii'))
         st.update(seq=int(r['seq']), sig=sig, clean=final)
         save_local(db_path, st)
@@ -308,7 +315,7 @@ def startup(cfg, db_path, files_dir, write_lock):
     STATE['enabled'] = True
     print(' Checking for newer data on Google Drive ...')
     try:
-        L = _call('lease')
+        L = _call('lease', timeout=25)          # weak internet: give up quickly and open on this PC's data
         if alive_other(L):
             if not ask('البرنامج يعمل الآن على الحاسبة: %s\n\nهل تريد نقله إلى هذه الحاسبة؟\n'
                        'ستحفظ تلك الحاسبة آخر بياناتها ثم تتوقف عن التعديل.' % (L.get('name') or '?')):
@@ -317,7 +324,7 @@ def startup(cfg, db_path, files_dir, write_lock):
             L2 = _call('claim', force=False)
             L = L2 if L2.get('holder') == pc_id() else wait_handover(L)
         if L.get('holder') != pc_id():
-            L = _call('claim', force=True)
+            L = _call('claim', timeout=25, force=True)
         STATE['holder'] = True
         st = load_local(db_path)
         if int(L.get('seq') or 0) > int(st.get('seq') or 0) or (int(L.get('seq') or 0) and not os.path.exists(db_path)):

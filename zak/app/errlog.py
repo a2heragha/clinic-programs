@@ -25,16 +25,50 @@ def _rotate(path, limit):
         pass
 
 
+_OUT = []
+_out_ev = threading.Event()
+
+
+def _console_writer():
+    """writes to the black window from its own thread: if the window is paused (text selected with the
+    mouse, scroll bar held) only this thread waits — the program itself never freezes on a print"""
+    while True:
+        _out_ev.wait()
+        _out_ev.clear()
+        while _OUT:
+            orig, s = _OUT.pop(0)
+            try:
+                orig.write(s)
+                orig.flush()
+            except Exception:
+                pass
+
+
+def _no_quickedit():
+    """Windows: clicking in the black window ("QuickEdit") pauses every print until a key is pressed —
+    turn it off so a stray click cannot hang the program"""
+    if os.name != 'nt':
+        return
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        h = k.GetStdHandle(-10)                 # STD_INPUT_HANDLE
+        mode = ctypes.c_uint32()
+        if k.GetConsoleMode(h, ctypes.byref(mode)):
+            k.SetConsoleMode(h, (mode.value & ~0x0040) | 0x0080)      # - QUICK_EDIT + EXTENDED_FLAGS
+    except Exception:
+        pass
+
+
 class _Tee:
     def __init__(self, orig):
         self.orig, self.bol = orig, True
 
     def write(self, s):
-        try:
-            if self.orig:
-                self.orig.write(s)
-        except Exception:
-            pass
+        if self.orig:
+            _OUT.append((self.orig, s))
+            del _OUT[:-2000]
+            _out_ev.set()
         try:
             p = os.path.join(DIR, 'console.log')
             out = []
@@ -50,10 +84,7 @@ class _Tee:
         return len(s)
 
     def flush(self):
-        try:
-            self.orig and self.orig.flush()
-        except Exception:
-            pass
+        pass
 
     def __getattr__(self, k):
         return getattr(self.orig, k)
@@ -68,6 +99,8 @@ def setup(root):
             VER = (json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.version'), encoding='utf-8')).get('sha') or '')[:7]
         except Exception:
             VER = ''
+        _no_quickedit()
+        threading.Thread(target=_console_writer, name='console', daemon=True).start()
         sys.stdout, sys.stderr = _Tee(sys.stdout), _Tee(sys.stderr)
         sys.excepthook = lambda t, v, tb: log('crash', '%s: %s' % (t.__name__, v), ''.join(traceback.format_exception(t, v, tb)))
         if hasattr(threading, 'excepthook'):
