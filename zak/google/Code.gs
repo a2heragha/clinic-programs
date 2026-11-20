@@ -244,7 +244,7 @@ function doPost(e) {
         const files = [], it = sub_('live').getFiles();
         while (it.hasNext()) files.push(it.next());
         files.sort((x, y) => y.getDateCreated() - x.getDateCreated());
-        files.slice(5).forEach(x => x.setTrashed(true));
+        files.slice(5).forEach(x => drop_(x));        // old copies are deleted for good, not kept in the bin
         return json_({ ok: true, seq: L.seq, t: L.t });
       }
       case 'db_pull': {
@@ -422,6 +422,10 @@ function lease_() {
   return Object.assign({ holder: '', name: '', beat: 0, pending: '', pending_name: '', pending_t: 0, seq: 0, t: 0, file: '', by: '' }, L);
 }
 function saveLease_(L) { PropertiesService.getScriptProperties().setProperty('LEASE', JSON.stringify(L)); }
+/* delete a file for good (Drive advanced service); without the service it goes to the bin as before */
+function drop_(f) {
+  try { Drive.Files.remove(f.getId()); } catch (e) { try { f.setTrashed(true); } catch (e2) { } }
+}
 function sub_(name) {     // sub-folder of the backup folder: 'live' (newest database) and 'files' (attached scans)
   const props = PropertiesService.getScriptProperties(), key = 'FOLDER_' + name.toUpperCase();
   const id = props.getProperty(key);
