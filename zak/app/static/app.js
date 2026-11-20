@@ -258,7 +258,7 @@ function startApp() {
   if (ME.role === 'doctor') { cloudDot(); setInterval(cloudDot, 30000); healthCheck(); setInterval(healthCheck, 10 * 60000); }
   decorateNav();
   document.body.classList.toggle('sec', ME.role !== 'doctor');
-  if (window.pcCheck) { pcCheck(); setInterval(pcCheck, 20000); }
+  if (window.pcCheck) { pcCheck(); setInterval(pcCheck, 10000); }
   $('#who').textContent = ME.name + ' ⏻';
   $('#who').onclick = async () => { await flushed(); await api('POST', '/api/logout'); ME = null; location.hash = ''; showLogin(); };
   $$('#nav [data-go]').forEach(b => b.onclick = () => { location.hash = b.dataset.go; });

@@ -738,12 +738,19 @@ class Handler(BaseHTTPRequestHandler):
                 if p0 == 'errors' and method == 'GET':
                     return self._send(200, {'pc': errlog.PC, 'ver': errlog.VER, 'rows': errlog.recent(int(qs.get('n') or 300)),
                                             'state': {k: (v or {}).get('error') for k, v in (('sync', cloudsync.STATE), ('handoff', handoff.STATE), ('update', updater.STATE), ('backup', BACKUP_STATE))}})
-                if handoff.STATE['readonly'] and method != 'GET' and p0 not in ('login', 'logout') and p0 not in ('ai_ocr', 'ai_summary', 'ai_test', 'ai_plan'):
+                if handoff.STATE['readonly'] and method != 'GET' and p0 not in ('login', 'logout', 'shutdown') and p0 not in ('ai_ocr', 'ai_summary', 'ai_test', 'ai_plan'):
                     raise ApiError('البرنامج انتقل إلى الحاسبة %s — هذه الحاسبة للقراءة فقط. أعد تشغيل البرنامج هنا لاستلامه. '
                                    '(The program moved to another PC — read-only here.)' % (handoff.STATE.get('other') or 'الأخرى'), 423)
                 if p0 == 'shutdown' and method == 'POST':
-                    threading.Thread(target=shutdown_now, daemon=True).start()
-                    res = {'ok': True, 'handoff': handoff.STATE['enabled']}
+                    # Close button: the program closes only after the last data is on Google Drive
+                    # (or when the user chooses "close anyway" after a failed upload)
+                    ok, err = handoff.final_push() if handoff.STATE['enabled'] else (True, None)
+                    if not ok and not body.get('force'):
+                        errlog.log('handoff', 'Close: last upload failed — ' + str(err))
+                        res = {'ok': False, 'uploaded': False, 'error': err}
+                    else:
+                        threading.Thread(target=shutdown_now, daemon=True).start()
+                        res = {'ok': True, 'uploaded': ok, 'handoff': handoff.STATE['enabled']}
                 elif p0 in ('restore', 'ai_ocr', 'ai_summary', 'ai_test', 'ai_plan') and method == 'POST':
                     res = self._special(conn, p0, body, user)
                 elif method == 'GET':
@@ -913,7 +920,7 @@ class Handler(BaseHTTPRequestHandler):
             return {'local_last': BACKUP_STATE.get('last'), 'local_error': BACKUP_STATE.get('error'),
                     'drive': bool(url and token), 'drive_last_ms': int(float(meta(conn).get('sync_backup_t') or 0)), 'sync_error': cloudsync.STATE.get('error')}
         if p0 == 'pc':
-            return dict(handoff.STATE, me=handoff.pc_name())
+            return dict(handoff.STATE, me=handoff.pc_name(), unsent=handoff.unsent())
         if p0 == 'status':
             return {'backup': BACKUP_STATE, 'db': DB_PATH,
                     'patients': conn.execute('SELECT COUNT(*) FROM patients').fetchone()[0],
@@ -1249,9 +1256,8 @@ def local_ips():
 
 
 def shutdown_now():
-    """Close button: last upload to Google Drive, then stop the server"""
+    """Close button: the last upload was already done by the request — stop the server"""
     time.sleep(0.5)
-    handoff.final_push()
     os._exit(0)
 
 

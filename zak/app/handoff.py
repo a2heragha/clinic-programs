@@ -15,7 +15,7 @@ import base64, datetime, gzip, hashlib, json, os, shutil, socket, sqlite3, sys, 
 
 import cloudsync
 
-PUSH_EVERY = 120          # seconds between uploads (only when the database changed)
+PUSH_EVERY = 120          # seconds between uploads (only when the database changed) — 30 after the Drive clean-up fix
 ALIVE_MS = 90 * 1000      # a holder silent for longer than this is considered switched off
 HANDOVER_WAIT = 180       # seconds a starting PC waits for the other PC to upload and hand over (while that PC is still alive)
 POLL = 4                  # seconds between lease checks while waiting
@@ -416,23 +416,40 @@ def loop(every=20):
         time.sleep(every)
 
 
+def unsent():
+    """True when this PC has changes that are not on Google Drive yet"""
+    if not STATE['enabled'] or not STATE['holder'] or STATE['readonly'] or not CTX.get('db'):
+        return False
+    st = load_local(CTX['db'])
+    return db_sig(CTX['db']) != st.get('sig')
+
+
 def final_push():
-    """on closing: last upload + let the next PC start at once"""
+    """on closing: last upload + let the next PC start at once.
+    Returns (ok, error). On failure this PC keeps working (not read-only), so nothing is lost by trying."""
     if not STATE['enabled'] or not STATE['holder'] or STATE['readonly']:
-        return
+        return True, None
     STATE['readonly'] = True
     try:
         push_db(final=True)
-        sync_files(CTX['files'], up=True, down=False)
+        try:
+            sync_files(CTX['files'], up=True, down=False)
+        except Exception as e:
+            print(' Attached files not uploaded yet: %s' % e)
         _call('release', timeout=30)
         STATE['holder'] = False
         print(' Last data uploaded.')
+        return True, None
     except Exception as e:
+        STATE['readonly'] = False              # still the holder: keep working, try again later
         print(' Last upload failed: %s' % e)
+        return False, str(e)
 
 
 def install_close_handler():
-    """closing the black window (or Windows shutting down) → final_push (Windows gives a few seconds)"""
+    """Windows: the X of the black window is switched off (close with the program's own Close button, which
+    uploads first); Ctrl+C or a forced close still uploads in the few seconds Windows allows; and switching
+    Windows off waits, with a message, until the last data is on Google Drive"""
     if os.name != 'nt':
         return
     try:
@@ -446,3 +463,65 @@ def install_close_handler():
         ctypes.windll.kernel32.SetConsoleCtrlHandler(handler, True)
     except Exception:
         pass
+    try:
+        import ctypes
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            menu = ctypes.windll.user32.GetSystemMenu(hwnd, False)
+            ctypes.windll.user32.DeleteMenu(menu, 0xF060, 0)      # SC_CLOSE: no X button
+            ctypes.windll.user32.DrawMenuBar(hwnd)
+    except Exception:
+        pass
+    threading.Thread(target=_shutdown_guard, name='shutdown-guard', daemon=True).start()
+
+
+def _shutdown_guard():
+    """a hidden window that receives "Windows is shutting down": it holds the shutdown with a reason text
+    (Windows shows it on the shutdown screen) until the last upload is done"""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        u32, k32 = ctypes.windll.user32, ctypes.windll.kernel32
+        LRESULT = ctypes.c_ssize_t
+        WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+        u32.DefWindowProcW.restype = LRESULT
+        u32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        WM_QUERYENDSESSION, WM_ENDSESSION = 0x0011, 0x0016
+        reason = 'جارٍ رفع بيانات العيادة إلى Google Drive… انتظر قليلاً — Uploading clinic data'
+
+        def proc(hwnd, msg, wp, lp):
+            try:
+                if msg == WM_QUERYENDSESSION:
+                    if unsent() or (STATE['holder'] and not STATE['readonly']):
+                        u32.ShutdownBlockReasonCreate(hwnd, reason)
+                        ok, err = final_push()
+                        u32.ShutdownBlockReasonDestroy(hwnd)
+                    return 1
+                if msg == WM_ENDSESSION:
+                    return 0
+            except Exception:
+                return 1
+            return u32.DefWindowProcW(hwnd, msg, wp, lp)
+
+        wndproc = WNDPROC(proc)
+        CTX['wndproc'] = wndproc
+        class WNDCLASS(ctypes.Structure):
+            _fields_ = [('style', wintypes.UINT), ('lpfnWndProc', WNDPROC), ('cbClsExtra', ctypes.c_int), ('cbWndExtra', ctypes.c_int),
+                        ('hInstance', wintypes.HINSTANCE), ('hIcon', wintypes.HICON), ('hCursor', wintypes.HANDLE), ('hbrBackground', wintypes.HBRUSH),
+                        ('lpszMenuName', wintypes.LPCWSTR), ('lpszClassName', wintypes.LPCWSTR)]
+        wc = WNDCLASS()
+        wc.lpfnWndProc = wndproc
+        wc.hInstance = k32.GetModuleHandleW(None)
+        wc.lpszClassName = 'ZakClinicShutdownGuard'
+        u32.RegisterClassW(ctypes.byref(wc))
+        u32.CreateWindowExW.restype = wintypes.HWND
+        hwnd = u32.CreateWindowExW(0, wc.lpszClassName, 'Zak Clinic', 0, 0, 0, 0, 0, None, None, wc.hInstance, None)
+        if not hwnd:
+            return
+        k32.SetProcessShutdownParameters(0x3FF, 0)                  # be asked first
+        msg = wintypes.MSG()
+        while u32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+            u32.TranslateMessage(ctypes.byref(msg))
+            u32.DispatchMessageW(ctypes.byref(msg))
+    except Exception as e:
+        print(' Shutdown guard not available: %s' % e)

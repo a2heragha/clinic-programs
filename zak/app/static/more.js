@@ -362,10 +362,34 @@ async function pcCheck() {
     b.onclick = async () => {
       if (!confirm(en ? 'Upload the last data and close the program on this PC?' : 'رفع آخر البيانات وإغلاق البرنامج على هذه الحاسبة؟')) return;
       await flushed();
-      try { await api('POST', '/api/shutdown'); } catch (e) { }
-      document.body.innerHTML = `<div class="card" style="max-width:520px;margin:15vh auto;text-align:center;font-size:18px" dir="${en ? 'ltr' : 'rtl'}">${en ? 'Saving to Google Drive…<br><b>You can switch the PC off when the black window closes.</b>' : 'جارٍ الحفظ في Google Drive…<br><b>يمكنك إطفاء الحاسبة بعد أن تُغلق النافذة السوداء.</b>'}</div>`;
+      const dir = en ? 'ltr' : 'rtl';
+      const screen = html => { document.body.innerHTML = `<div class="card" style="max-width:560px;margin:15vh auto;text-align:center;font-size:18px;line-height:1.7" dir="${dir}">${html}</div>`; };
+      const go = async force => {
+        screen(en ? '☁️ Uploading the last data to Google Drive…<br><small>Do not switch the PC off.</small>' : '☁️ جارٍ رفع آخر البيانات إلى Google Drive…<br><small>لا تُطفئ الحاسبة.</small>');
+        let r; try { r = await api('POST', '/api/shutdown', force ? { force: true } : {}); } catch (e) { r = { ok: false, error: e.message }; }
+        if (r.ok) return screen(r.uploaded === false
+          ? (en ? '⚠️ Closed <b>without</b> uploading. The data is on this PC only — start the program on this PC again when the internet is back.' : '⚠️ أُغلق البرنامج <b>دون</b> رفع البيانات. البيانات في هذه الحاسبة فقط — شغّل البرنامج عليها مرة أخرى عند عودة الإنترنت.')
+          : (en ? '✅ All data is on Google Drive.<br><b>You can switch the PC off when the black window closes.</b>' : '✅ كل البيانات في Google Drive.<br><b>يمكنك إطفاء الحاسبة بعد أن تُغلق النافذة السوداء.</b>'));
+        screen((en ? '⚠️ The last data could <b>not</b> be uploaded' : '⚠️ <b>لم</b> يُرفع آخر البيانات') + `<br><small dir="ltr">${esc(r.error || '')}</small><br><br>
+          <button class="primary" id="shRetry">${en ? '🔁 Try again' : '🔁 حاول مرة أخرى'}</button>
+          <button id="shBack">${en ? '↩️ Keep working' : '↩️ متابعة العمل'}</button>
+          <button class="danger" id="shForce">${en ? 'Close anyway' : 'أغلق على مسؤوليتي'}</button>
+          <div class="small muted" style="margin-top:10px">${en ? 'If you close anyway, do not use another PC until this one has uploaded.' : 'إن أغلقت الآن فلا تستخدموا حاسبة أخرى قبل أن تُشغَّل هذه الحاسبة وترفع بياناتها.'}</div>`);
+        $('#shRetry').onclick = () => go(false);
+        $('#shBack').onclick = () => location.reload();
+        $('#shForce').onclick = () => { if (confirm(en ? 'Close without uploading?' : 'إغلاق دون رفع البيانات؟')) go(true); };
+      };
+      go(false);
     };
     $('#who').before(b);
   }
   if (h.readonly && $('#pcOff')) $('#pcOff').remove();
+  let up = $('#upState');
+  if (!h.enabled || h.readonly) { if (up) up.remove(); return; }
+  if (!up) { up = document.createElement('div'); up.id = 'upState'; up.className = 'net'; $('#net').before(up); }
+  const pend = h.unsent || h.offline;
+  up.className = 'net ' + (pend ? (h.offline ? 'bad' : 'busy') : 'ok');
+  up.textContent = pend ? (en ? '☁️⚠️ Not uploaded yet' : '☁️⚠️ لم تُرفع بعد') : (en ? '☁️✅ Uploaded' : '☁️✅ مرفوعة');
+  up.title = pend ? (en ? 'Some changes are on this PC only' + (h.offline ? ' — no internet' : ' — they are uploaded within 30 seconds') : 'بعض التعديلات في هذه الحاسبة فقط' + (h.offline ? ' — لا يوجد إنترنت' : ' — تُرفع خلال 30 ثانية'))
+    : (en ? 'All data is on Google Drive' + (h.last_push ? ' (last upload ' + h.last_push + ')' : '') : 'كل البيانات في Google Drive' + (h.last_push ? ' (آخر رفع ' + h.last_push + ')' : ''));
 }
