@@ -1262,6 +1262,7 @@ def shutdown_now():
 
 
 def main():
+    cloudsync.PATHS.update(config=CONFIG_PATH, db=DB_PATH)
     relink.check(CFG, DB_PATH)
     handoff.startup(CFG, DB_PATH, FILES_DIR, WRITE_LOCK)     # several PCs: fetch the newest data before opening it
     conn = db()

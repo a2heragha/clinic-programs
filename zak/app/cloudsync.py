@@ -44,7 +44,54 @@ def config(conn):
     return meta_get(conn, 'sync_url', '') or '', meta_get(conn, 'sync_token', '') or ''
 
 
+MOVED = {}        # old link → new link: the old script answered "moved" (the clinic was moved to another Google account)
+PATHS = {}        # set by the server: {'config': config.json, 'db': clinic.db}
+_SCRIPT = 'https://script.google.com/macros/s/'
+RESET_META = ('sync_cursor', 'sync_patients_hash', 'sync_patients_t', 'sync_config_hash', 'sync_backup_t', 'sync_clinical_t')
+
+
+def moved_to(old, new):
+    """remember the new link (same token) in config.json and the database, and send everything to it again.
+    The hand-over count is kept: the new script starts from the same database copy."""
+    print(' The online version moved to a new link — switching to it.')
+    cp, dbp = PATHS.get('config'), PATHS.get('db')
+    try:
+        if cp and os.path.exists(cp):
+            with open(cp, encoding='utf-8') as f:
+                c = json.load(f)
+            if c.get('sync_url') in (None, '', old):
+                c['sync_url'] = new
+                with open(cp, 'w', encoding='utf-8') as f:
+                    json.dump(c, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(' config.json not updated: %s' % e)
+    try:
+        if dbp and os.path.exists(dbp):
+            c = sqlite3.connect(dbp, timeout=30)
+            try:
+                if (meta_get(c, 'sync_url', '') or '') in ('', old):
+                    meta_set(c, 'sync_url', new)
+                    c.executemany('DELETE FROM meta WHERE k=?', [(k,) for k in RESET_META])
+                    for q in ('UPDATE appointments SET synced_at=NULL', 'DELETE FROM sync_clinical'):
+                        try:
+                            c.execute(q)
+                        except sqlite3.Error:
+                            pass
+                    c.commit()
+            finally:
+                c.close()
+    except Exception as e:
+        print(' Database link not updated: %s' % e)
+    try:
+        import errlog
+        errlog.log('sync', 'Moved to the new online link')
+    except Exception:
+        pass
+
+
 def call(url, token, action, timeout=60, **payload):
+    url = MOVED.get(url, url)
+    extra = dict(payload)
     payload.update({'token': token, 'action': action})
     data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
     req = urllib.request.Request(url, data=data, headers={'Content-Type': 'text/plain;charset=utf-8'}, method='POST')
@@ -54,6 +101,11 @@ def call(url, token, action, timeout=60, **payload):
         res = json.loads(body)
     except ValueError:
         raise RuntimeError('Unexpected answer from Google — check the link and that the script is deployed with access "Anyone"')
+    mv = res.get('moved')
+    if isinstance(mv, str) and mv.startswith(_SCRIPT) and mv != url and url not in MOVED.values():
+        MOVED[url] = mv
+        moved_to(url, mv)
+        return call(mv, token, action, timeout, **extra)
     if not res.get('ok'):
         raise RuntimeError(res.get('error') or 'Error from Google')
     return res
