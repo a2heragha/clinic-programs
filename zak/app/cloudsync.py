@@ -82,6 +82,17 @@ def moved_to(old, new):
                 c.close()
     except Exception as e:
         print(' Database link not updated: %s' % e)
+    try:   # the new link counts its copies on its own: the next start downloads its data (changes of this PC are added on top)
+        import handoff
+        if dbp:
+            st = handoff.load_local(dbp)
+            if st.get('seq'):
+                st['seq'] = 0
+                handoff.save_local(dbp, st)
+        if handoff.STATE.get('holder'):          # moved while running: stop writing until the program is started again
+            handoff.STATE.update(readonly=True, holder=False, other='new link - restart the program')
+    except Exception as e:
+        print(' Hand-over count not reset: %s' % e)
     try:
         import errlog
         errlog.log('sync', 'Moved to the new online link')
