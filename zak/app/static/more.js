@@ -390,6 +390,6 @@ async function pcCheck() {
   const pend = h.unsent || h.offline;
   up.className = 'net ' + (pend ? (h.offline ? 'bad' : 'busy') : 'ok');
   up.textContent = pend ? (en ? '☁️⚠️ Not uploaded yet' : '☁️⚠️ لم تُرفع بعد') : (en ? '☁️✅ Uploaded' : '☁️✅ مرفوعة');
-  up.title = pend ? (en ? 'Some changes are on this PC only' + (h.offline ? ' — no internet' : ' — they are uploaded within 30 seconds') : 'بعض التعديلات في هذه الحاسبة فقط' + (h.offline ? ' — لا يوجد إنترنت' : ' — تُرفع خلال 30 ثانية'))
+  up.title = pend ? (en ? 'Some changes are on this PC only' + (h.offline ? ' — no internet' : ' — the upload is late') : 'بعض التعديلات في هذه الحاسبة فقط' + (h.offline ? ' — لا يوجد إنترنت' : ' — تأخر الرفع')) + (h.error ? ' (' + h.error + ')' : '')
     : (en ? 'All data is on Google Drive' + (h.last_push ? ' (last upload ' + h.last_push + ')' : '') : 'كل البيانات في Google Drive' + (h.last_push ? ' (آخر رفع ' + h.last_push + ')' : ''));
 }

@@ -162,7 +162,7 @@ def push_db(force=False, final=False):
         st.update(seq=int(r['seq']), sig=sig, clean=final)
         save_local(db_path, st)
         _save_base(db_path, gzip.decompress(data))
-        STATE.update(seq=st['seq'], last_push=datetime.datetime.now().strftime('%H:%M'))
+        STATE.update(seq=st['seq'], last_push=datetime.datetime.now().strftime('%H:%M'), push_t=time.time())
         return True
 
 
@@ -557,6 +557,15 @@ def loop(every=20):
     while True:
         tick()
         time.sleep(every)
+
+
+def unsent_late(grace=75):
+    """for the status badge: changes waiting longer than one upload round (saving every few seconds is normal;
+    they are uploaded every 30 s, so only a wait past `grace` seconds means something is wrong)"""
+    if not unsent():
+        STATE['push_t'] = time.time()
+        return False
+    return time.time() - STATE.setdefault('push_t', time.time()) > grace
 
 
 def unsent():
