@@ -373,11 +373,32 @@ def hand_over():
     print(' Handed over to %s - this PC is now read-only. Restart the program here to take it back.' % STATE['other'])
 
 
+NET = {'fails': 0}
+OFFLINE_AFTER = 3          # consecutive failed beats (~1 minute) before the PC is shown as offline
+
+
+def _net_log(what, e):
+    try:
+        import errlog
+        errlog.log('net', '%s: %s: %s' % (what, type(e).__name__, e))
+    except Exception:
+        pass
+
+
 def tick():
     if not STATE['enabled'] or STATE['readonly'] or STATE['conflict']:
         return
     try:
-        L = _call('beat', timeout=60)
+        try:
+            L = _call('beat', timeout=60)
+        except (urllib.error.URLError, OSError) as e:
+            NET['fails'] += 1
+            _net_log('beat failed (%d)' % NET['fails'], e)
+            if NET['fails'] >= OFFLINE_AFTER:
+                STATE['offline'] = True
+                STATE['error'] = 'No internet'
+            return
+        NET['fails'] = 0
         STATE['offline'] = False
         if not STATE['holder']:                 # started without internet
             st = load_local(CTX['db'])
@@ -398,12 +419,18 @@ def tick():
             return
         if time.time() - CTX.get('pushed_t', 0) >= PUSH_EVERY:
             CTX['pushed_t'] = time.time()
-            push_db()
-        upload_new_files(limit=3)
+            try:
+                push_db()
+            except (urllib.error.URLError, OSError) as e:      # the link works (beat answered): a slow upload is not "no internet"
+                _net_log('upload failed, retried in 30 s', e)
+                CTX['pushed_t'] = 0
+                STATE['error'] = 'Upload failed - retrying'
+                return
+        try:
+            upload_new_files(limit=3)
+        except (urllib.error.URLError, OSError) as e:
+            _net_log('file upload failed', e)
         STATE['error'] = None
-    except (urllib.error.URLError, OSError):
-        STATE['offline'] = True
-        STATE['error'] = 'No internet'
     except Exception as e:
         if STATE['error'] != str(e):
             print(' Hand-over: %s' % e)
