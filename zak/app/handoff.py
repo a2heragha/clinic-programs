@@ -486,6 +486,8 @@ def _shutdown_guard():
         WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
         u32.DefWindowProcW.restype = LRESULT
         u32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        u32.ShutdownBlockReasonCreate.argtypes = [wintypes.HWND, wintypes.LPCWSTR]
+        u32.ShutdownBlockReasonDestroy.argtypes = [wintypes.HWND]
         WM_QUERYENDSESSION, WM_ENDSESSION = 0x0011, 0x0016
         reason = 'جارٍ رفع بيانات العيادة إلى Google Drive… انتظر قليلاً — Uploading clinic data'
 
@@ -511,10 +513,14 @@ def _shutdown_guard():
                         ('lpszMenuName', wintypes.LPCWSTR), ('lpszClassName', wintypes.LPCWSTR)]
         wc = WNDCLASS()
         wc.lpfnWndProc = wndproc
+        k32.GetModuleHandleW.restype = wintypes.HMODULE
+        k32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
         wc.hInstance = k32.GetModuleHandleW(None)
         wc.lpszClassName = 'ZakClinicShutdownGuard'
         u32.RegisterClassW(ctypes.byref(wc))
         u32.CreateWindowExW.restype = wintypes.HWND
+        u32.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD, ctypes.c_int, ctypes.c_int,
+                                        ctypes.c_int, ctypes.c_int, wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE, wintypes.LPVOID]
         hwnd = u32.CreateWindowExW(0, wc.lpszClassName, 'Zak Clinic', 0, 0, 0, 0, 0, None, None, wc.hInstance, None)
         if not hwnd:
             return
