@@ -369,7 +369,7 @@ async function pcCheck() {
         let r; try { r = await api('POST', '/api/shutdown', force ? { force: true } : {}); } catch (e) { r = { ok: false, error: e.message }; }
         if (r.ok) return screen(r.uploaded === false
           ? (en ? '⚠️ Closed <b>without</b> uploading. The data is on this PC only — start the program on this PC again when the internet is back.' : '⚠️ أُغلق البرنامج <b>دون</b> رفع البيانات. البيانات في هذه الحاسبة فقط — شغّل البرنامج عليها مرة أخرى عند عودة الإنترنت.')
-          : (en ? '✅ All data is on Google Drive.<br><b>You can switch the PC off when the black window closes.</b>' : '✅ كل البيانات في Google Drive.<br><b>يمكنك إطفاء الحاسبة بعد أن تُغلق النافذة السوداء.</b>'));
+          : (en ? '✅ All data is on Google Drive.<br><b>The program closes by itself in a few seconds — then you can switch the PC off.</b>' : '✅ كل البيانات في Google Drive.<br><b>يُغلق البرنامج نفسه خلال ثوانٍ، ثم يمكنك إطفاء الحاسبة.</b>'));
         screen((en ? '⚠️ The last data could <b>not</b> be uploaded' : '⚠️ <b>لم</b> يُرفع آخر البيانات') + `<br><small dir="ltr">${esc(r.error || '')}</small><br><br>
           <button class="primary" id="shRetry">${en ? '🔁 Try again' : '🔁 حاول مرة أخرى'}</button>
           <button id="shBack">${en ? '↩️ Keep working' : '↩️ متابعة العمل'}</button>

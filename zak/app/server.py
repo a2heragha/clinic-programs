@@ -749,7 +749,7 @@ class Handler(BaseHTTPRequestHandler):
                         errlog.log('handoff', 'Close: last upload failed — ' + str(err))
                         res = {'ok': False, 'uploaded': False, 'error': err}
                     else:
-                        threading.Thread(target=shutdown_now, daemon=True).start()
+                        threading.Thread(target=shutdown_now, args=(3 if ok else 10,), daemon=True).start()
                         res = {'ok': True, 'uploaded': ok, 'handoff': handoff.STATE['enabled']}
                 elif p0 in ('restore', 'ai_ocr', 'ai_summary', 'ai_test', 'ai_plan') and method == 'POST':
                     res = self._special(conn, p0, body, user)
@@ -1255,9 +1255,30 @@ def local_ips():
     return sorted(i for i in ips if not i.startswith('127.'))
 
 
-def shutdown_now():
-    """Close button: the last upload was already done by the request — stop the server"""
-    time.sleep(0.5)
+def close_browser():
+    """Windows: close the program's own browser window (the one opened with data/browser-profile)"""
+    if os.name != 'nt':
+        return
+    import subprocess
+    prof = os.path.join(ROOT, 'data', 'browser-profile').replace("'", "''")
+    ps = ("Get-CimInstance Win32_Process -Filter \"Name='chrome.exe' or Name='msedge.exe'\" | "
+          "Where-Object { $_.CommandLine -and $_.CommandLine.Contains('%s') } | "
+          "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" % prof)
+    try:
+        subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', ps], timeout=20,
+                       creationflags=0x08000000)     # CREATE_NO_WINDOW
+    except Exception as e:
+        try:
+            errlog.log('close', 'browser window not closed: %s' % e)
+        except Exception:
+            pass
+
+
+def shutdown_now(delay=3):
+    """Close button: the last upload was already done by the request — show the result for a moment,
+    close the program's browser window, then stop the server (the black window closes with it)"""
+    time.sleep(delay)
+    close_browser()
     os._exit(0)
 
 

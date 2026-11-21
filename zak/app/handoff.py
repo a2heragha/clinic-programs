@@ -445,8 +445,10 @@ def _startup_once(db_path, files_dir):
             L = _call('claim', timeout=25, force=True)
         STATE['holder'] = True
         st = load_local(db_path)
-        if int(L.get('seq') or 0) > int(st.get('seq') or 0) or (int(L.get('seq') or 0) and not os.path.exists(db_path)):
-            unsent = bool(st.get('sig')) and not st.get('clean') and db_sig(db_path) != st['sig']
+        rs, ls = int(L.get('seq') or 0), int(st.get('seq') or 0)
+        if rs > ls or (rs and not os.path.exists(db_path)) or (rs and ls > rs):
+            # ls > rs: this PC counted on another (older) link — the data on this link wins, this PC's changes are added
+            unsent = (bool(st.get('sig')) and not st.get('clean') and db_sig(db_path) != st['sig']) or ls > rs
             if unsent:
                 print(' This PC had changes that were never uploaded - adding them to the newer data ...')
             pull_db(L, unsent)
