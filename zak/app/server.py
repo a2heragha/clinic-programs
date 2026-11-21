@@ -1275,7 +1275,7 @@ def main():
         print(' ', e)
     try:            # newer data from the old program (app/incoming/*.json), each file once
         import import_add
-        for name, st in import_add.run(conn):
+        for name, st in import_add.run(conn, handoff.can_sync()):
             print(' Imported', name, st)
     except Exception as e:
         print(' Import of app/incoming failed:', e)

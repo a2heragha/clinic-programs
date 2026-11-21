@@ -83,15 +83,134 @@ def import_file(conn, path):
     return stats
 
 
-def run(conn):
-    """import every file in app/incoming that was not imported before"""
+VF = ('complaint', 'exam', 'diagnosis', 'plan', 'notes', 'bp_sys', 'bp_dia', 'hr', 'rr', 'temp', 'spo2', 'weight', 'height',
+      'rbs', 'follow_up', 'waist', 'imaging')
+PF = ('gender', 'birth_year', 'dob', 'phone', 'address', 'occupation', 'marital', 'smoking', 'alcohol', 'chronic', 'allergies',
+      'long_meds', 'past_history', 'personal_note', 'height')
+
+
+def _pid(conn, nn):
+    r = conn.execute('SELECT id FROM patients WHERE name_norm=? ORDER BY id LIMIT 1', (nn,)).fetchone()
+    return r['id'] if r else None
+
+
+def _meds(conn, vid, meds):
+    for i, line in enumerate(meds or []):
+        conn.execute('INSERT INTO visit_meds(visit_id,seq,line) VALUES(?,?,?)', (vid, i, line))
+        conn.execute('INSERT OR IGNORE INTO drugs(line,uses) VALUES(?,0)', (line,))
+        conn.execute('UPDATE drugs SET uses=uses+1 WHERE line=?', (line,))
+
+
+def _touch(conn, pid):
+    conn.execute("UPDATE patients SET updated_at=datetime('now','localtime') WHERE id=?", (pid,))
+
+
+def _longer(cur, val):
+    """the old text is the same text as the current one, only longer"""
+    if not (isinstance(cur, str) and isinstance(val, str)) or len(val) <= len(cur):
+        return False
+    c = cur.strip()
+    return val.startswith(c[:max(10, len(c) - 5)])
+
+
+def import_recover(conn, data):
+    """Rows recovered from an old copy of a PC's database (data/before-download).
+    Only what is missing is added; an existing field is filled only when it is empty, or when the old text is the same text, longer."""
+    import cloudsync
+    st = {'patients': 0, 'visits': 0, 'filled': 0, 'labs': 0, 'appointments': 0, 'skipped': 0}
+    now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    for p in data.get('patients') or []:
+        if _pid(conn, p['name_norm']):
+            st['skipped'] += 1
+            continue
+        cols = ['name', 'name_norm'] + [k for k in PF if p.get(k) not in (None, '')]
+        vals = [p[k] for k in cols]
+        if p.get('phone'):
+            cols.append('phone_norm')
+            vals.append(norm_phone(p['phone']))
+        cols += ['created_by', 'created_at', 'updated_at']
+        vals += ['recover', p.get('created_at') or now, now]
+        conn.execute('INSERT INTO patients(%s) VALUES(%s)' % (','.join(cols), ','.join('?' * len(cols))), vals)
+        st['patients'] += 1
+    for v in data.get('visits') or []:
+        pid = _pid(conn, v['name_norm'])
+        if not pid or conn.execute('SELECT 1 FROM visits WHERE patient_id=? AND date=?', (pid, v['date'])).fetchone():
+            st['skipped'] += 1
+            continue
+        extra = [k for k in VF + ('price', 'fee_type', 'created_at') if v.get(k) not in (None, '')]
+        cols = ['patient_id', 'date'] + extra
+        vals = [pid, v['date']] + [v[k] for k in extra]
+        vid = conn.execute('INSERT INTO visits(%s) VALUES(%s)' % (','.join(cols), ','.join('?' * len(cols))), vals).lastrowid
+        _meds(conn, vid, v.get('meds'))
+        _touch(conn, pid)
+        st['visits'] += 1
+    for f in data.get('visit_fill') or []:
+        pid = _pid(conn, f['name_norm'])
+        rows = conn.execute('SELECT * FROM visits WHERE patient_id=? AND date=?', (pid, f['date'])).fetchall() if pid else []
+        if len(rows) != 1:
+            st['skipped'] += 1
+            continue
+        cur = rows[0]
+        for k, val in f['set'].items():
+            if k == '_meds':
+                if not conn.execute('SELECT 1 FROM visit_meds WHERE visit_id=?', (cur['id'],)).fetchone():
+                    _meds(conn, cur['id'], val)
+                    st['filled'] += 1
+            elif k in VF and (cur[k] in (None, '') or _longer(cur[k], val)):
+                conn.execute('UPDATE visits SET %s=? WHERE id=?' % k, (val, cur['id']))
+                st['filled'] += 1
+        _touch(conn, pid)
+    for lb in data.get('labs') or []:
+        pid = _pid(conn, lb['name_norm'])
+        if not pid or conn.execute('SELECT 1 FROM labs WHERE patient_id=? AND date=? AND code=? AND value IS ?',
+                                   (pid, lb['date'], lb['code'], lb['value'])).fetchone():
+            st['skipped'] += 1
+            continue
+        if 'replaces' in lb:            # a value corrected on the old copy (the wrong one was deleted there)
+            r = conn.execute('SELECT id FROM labs WHERE patient_id=? AND date=? AND code=? AND value IS ?',
+                             (pid, lb['date'], lb['code'], lb['replaces'])).fetchone()
+            if r:
+                conn.execute('UPDATE labs SET value=?, text=? WHERE id=?', (lb['value'], lb['text'], r['id']))
+                _touch(conn, pid)
+                st['labs'] += 1
+                continue
+        vr = conn.execute('SELECT id FROM visits WHERE patient_id=? AND date=? ORDER BY id LIMIT 1',
+                          (pid, lb['date'])).fetchone() if lb.get('with_visit') else None
+        conn.execute('INSERT INTO labs(patient_id,visit_id,date,code,value,text,source) VALUES(?,?,?,?,?,?,?)',
+                     (pid, vr['id'] if vr else None, lb['date'], lb['code'], lb['value'], lb['text'], lb.get('source') or 'recover'))
+        _touch(conn, pid)
+        st['labs'] += 1
+    for a in data.get('appointments') or []:
+        if conn.execute('SELECT 1 FROM appointments WHERE date=? AND name=?', (a['date'], a['name'])).fetchone():
+            st['skipped'] += 1
+            continue
+        pid = _pid(conn, a['name_norm']) if a.get('name_norm') else None
+        vr = conn.execute('SELECT id FROM visits WHERE patient_id=? AND date=?', (pid, a['date'])).fetchone() if pid else None
+        conn.execute('INSERT INTO appointments(date,time,seq,patient_id,name,phone,age,note,status,created_by,created_at,weight,kind,'
+                     'visit_id,uid,deleted,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)',
+                     (a['date'], a.get('time'), a.get('seq'), pid, a['name'], a.get('phone'), a.get('age'), a.get('note'),
+                      a.get('status'), a.get('created_by'), a.get('created_at'), a.get('weight'), a.get('kind'),
+                      vr['id'] if vr else None, cloudsync.new_uid(), cloudsync.now_ms()))
+        st['appointments'] += 1
+    return st
+
+
+def run(conn, may_write=True):
+    """import every file in app/incoming that was not imported before.
+    Recovered rows (kind "recover") are added only on the PC that holds the data; elsewhere they wait for a later start."""
     done = set(json.loads((conn.execute("SELECT v FROM meta WHERE k='imported_files'").fetchone() or ['[]'])[0] or '[]'))
     out = []
     for f in sorted(glob.glob(os.path.join(IN_DIR, '*.json'))):
         name = os.path.basename(f)
         if name in done:
             continue
-        st = import_file(conn, f)
+        data = json.load(open(f, encoding='utf-8'))
+        if data.get('kind') == 'recover':
+            if not may_write:
+                continue
+            st = import_recover(conn, data)
+        else:
+            st = import_file(conn, f)
         done.add(name)
         conn.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('imported_files',?)", (json.dumps(sorted(done)),))
         conn.commit()
