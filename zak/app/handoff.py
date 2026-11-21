@@ -332,6 +332,32 @@ def choose_offline():
     return {'e': 'exit', 'o': 'offline'}.get(a[:1], 'retry')
 
 
+def choose_unsent(name, beat_ms):
+    """another PC stopped without uploading: 'retry' (look again), 'exit' or 'continue' here"""
+    when = datetime.datetime.fromtimestamp(beat_ms / 1000).strftime('%Y-%m-%d %H:%M') if beat_ms else '?'
+    text = ('الحاسبة «%s» لم تُغلق البرنامج بشكل صحيح، وقد تكون فيها بيانات مرضى لم تُرفع.\n'
+            'آخر اتصال لها: %s\n\n'
+            'الأفضل: شغّل البرنامج على تلك الحاسبة مع الإنترنت لترفع بياناتها، ثم أغلقه من زر الإغلاق، ثم عد إلى هنا.\n\n'
+            'Retry : إعادة الفحص (بعد أن ترفع تلك الحاسبة بياناتها)\n'
+            'Abort : خروج من البرنامج\n'
+            'Ignore : الاستمرار هنا على مسؤوليتك\n\n'
+            'إن استمررت هنا: بيانات تلك الحاسبة لا تضيع، وتُضاف تلقائياً عند تشغيلها لاحقاً مع الإنترنت، '
+            'لكنها لن تظهر هنا حتى ذلك الحين.') % (name, when)
+    if os.name == 'nt':
+        try:
+            import ctypes
+            r = ctypes.windll.user32.MessageBoxW(0, text, 'عيادة الدكتور زكريا — بيانات لم تُرفع',
+                                                 0x02 | 0x30 | 0x100 | 0x40000 | 0x100000)
+            return {3: 'exit', 4: 'retry', 5: 'continue'}.get(r, 'retry')
+        except Exception:
+            pass
+    try:
+        a = input(' %s stopped without uploading (last seen %s). [r]etry, [e]xit, [c]ontinue here? ' % (name, when)).strip().lower()
+    except EOFError:
+        return 'continue'
+    return {'e': 'exit', 'c': 'continue'}.get(a[:1], 'retry')
+
+
 def tell(text, title='عيادة الدكتور زكريا'):
     if os.name == 'nt':
         try:
@@ -403,6 +429,18 @@ def _startup_once(db_path, files_dir):
                 sys.exit(0)
             L2 = _call('claim', force=False)
             L = L2 if L2.get('holder') == pc_id() else wait_handover(L)
+        while L.get('holder') and L['holder'] != pc_id() and not alive_other(L):
+            # that PC was never closed with its Close button (no internet, power cut): it may hold data not uploaded
+            c = choose_unsent(L.get('name') or '?', int(L.get('beat') or 0))
+            if c == 'exit':
+                print(' Closed: %s should be started first, with internet, to upload its data.' % (L.get('name') or '?'))
+                sys.exit(0)
+            if c == 'continue':
+                _log('net', 'started although %s may hold data not uploaded (chosen by the user)' % (L.get('name') or '?'))
+                break
+            L = _call('lease', timeout=25)
+            if alive_other(L):
+                return _startup_once(db_path, files_dir)        # that PC is running now: ask to move the program here
         if L.get('holder') != pc_id():
             L = _call('claim', timeout=25, force=True)
         STATE['holder'] = True
