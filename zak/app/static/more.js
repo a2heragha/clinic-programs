@@ -374,10 +374,10 @@ async function pcCheck() {
           <button class="primary" id="shRetry">${en ? '🔁 Try again' : '🔁 حاول مرة أخرى'}</button>
           <button id="shBack">${en ? '↩️ Keep working' : '↩️ متابعة العمل'}</button>
           <button class="danger" id="shForce">${en ? 'Close anyway' : 'أغلق على مسؤوليتي'}</button>
-          <div class="small muted" style="margin-top:10px">${en ? 'If you close anyway, do not use another PC until this one has uploaded.' : 'إن أغلقت الآن فلا تستخدموا حاسبة أخرى قبل أن تُشغَّل هذه الحاسبة وترفع بياناتها.'}</div>`);
+          <div class="small" style="margin-top:12px;color:#b45309;font-weight:600">${en ? 'Closing anyway: the patients entered since the last time there was internet stay on this PC only. If another PC or the phone is used before this PC is started again with internet, those data are lost.' : 'الإغلاق على مسؤوليتك: بيانات المرضى المدخلة منذ آخر مرة كان فيها إنترنت تبقى في هذه الحاسبة فقط. إذا استُخدمت حاسبة أخرى أو الهاتف قبل أن تُشغَّل هذه الحاسبة مع الإنترنت، تضيع تلك البيانات.'}</div>`);
         $('#shRetry').onclick = () => go(false);
         $('#shBack').onclick = () => location.reload();
-        $('#shForce').onclick = () => { if (confirm(en ? 'Close without uploading?' : 'إغلاق دون رفع البيانات؟')) go(true); };
+        $('#shForce').onclick = () => { if (confirm(en ? 'Close without uploading? The unsent patient data may be lost.' : 'إغلاق دون رفع البيانات؟ قد تضيع بيانات المرضى غير المرفوعة.')) go(true); };
       };
       go(false);
     };

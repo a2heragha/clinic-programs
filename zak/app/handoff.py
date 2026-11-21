@@ -275,6 +275,29 @@ def ask(text, title='عيادة الدكتور زكريا'):
         return True
 
 
+def choose_offline():
+    """start-up without internet: 'retry', 'exit' or 'offline' (work on this PC's data, at the user's own risk)"""
+    text = ('لا يوجد اتصال بالإنترنت الآن، فلم يُتأكد من وجود بيانات أحدث على Google Drive.\n\n'
+            'Retry : إعادة المحاولة (بعد التأكد من الإنترنت)\n'
+            'Abort : خروج من البرنامج\n'
+            'Ignore : الاستمرار بدون نت على مسؤوليتك\n\n'
+            'إن استمررت بدون نت: لا تستخدموا أي حاسبة أخرى أو الهاتف حتى يعود الإنترنت هنا وتُرفع البيانات، '
+            'وإلا ستضيع بيانات المرضى المدخلة في إحدى الحاسبتين.')
+    if os.name == 'nt':
+        try:
+            import ctypes
+            r = ctypes.windll.user32.MessageBoxW(0, text, 'عيادة الدكتور زكريا — لا يوجد إنترنت',
+                                                 0x02 | 0x30 | 0x100 | 0x40000 | 0x100000)   # Abort/Retry/Ignore, warning, Retry default
+            return {3: 'exit', 4: 'retry', 5: 'offline'}.get(r, 'retry')
+        except Exception:
+            pass
+    try:
+        a = input(' No internet. [r]etry, [e]xit, or [o]ffline (at your own risk)? ').strip().lower()
+    except EOFError:
+        return 'offline'
+    return {'e': 'exit', 'o': 'offline'}.get(a[:1], 'retry')
+
+
 def tell(text, title='عيادة الدكتور زكريا'):
     if os.name == 'nt':
         try:
@@ -313,6 +336,29 @@ def startup(cfg, db_path, files_dir, write_lock):
     if not link:
         return
     STATE['enabled'] = True
+    while True:
+        r = _startup_once(db_path, files_dir)
+        if r != 'offline':
+            return
+        STATE['offline'] = True
+        STATE['error'] = 'No internet'
+        c = choose_offline()
+        if c == 'exit':
+            print(' No internet - closed by the user.')
+            sys.exit(0)
+        if c == 'offline':
+            print(' No internet - working on the data already on this PC (chosen by the user).')
+            try:
+                import errlog
+                errlog.log('net', 'started without internet - the user chose to continue offline')
+            except Exception:
+                pass
+            return
+        print(' Retrying ...')
+        STATE['offline'] = False
+
+
+def _startup_once(db_path, files_dir):
     print(' Checking for newer data on Google Drive ...')
     try:
         L = _call('lease', timeout=25)          # weak internet: give up quickly and open on this PC's data
@@ -340,11 +386,8 @@ def startup(cfg, db_path, files_dir, write_lock):
     except SystemExit:
         raise
     except (urllib.error.URLError, OSError) as e:
-        STATE['offline'] = True
-        STATE['error'] = 'No internet'
-        print(' No internet - working on the data already on this PC.')
-        tell('لا يوجد إنترنت الآن.\nسيعمل البرنامج على البيانات الموجودة في هذه الحاسبة.\n\n'
-             'تأكد أن الحاسبة الأخرى لم تُستخدم منذ آخر مرة عُملت هنا، وإلا ستنقسم البيانات.')
+        print(' No internet (%s)' % e)
+        return 'offline'
     except Exception as e:
         if 'Unknown action' in str(e):          # the online script is older than this program: work as a single PC
             STATE['enabled'] = False
