@@ -161,12 +161,32 @@ def push_db(force=False, final=False):
         r = _call('db_push', timeout=300, data=base64.b64encode(data).decode('ascii'))
         st.update(seq=int(r['seq']), sig=sig, clean=final)
         save_local(db_path, st)
+        _save_base(db_path, gzip.decompress(data))
         STATE.update(seq=st['seq'], last_push=datetime.datetime.now().strftime('%H:%M'))
         return True
 
 
-def pull_db(L):
+def _save_base(db_path, raw):
+    try:
+        import recover
+        recover.save_base(db_path, raw)
+    except Exception as e:
+        _log('base', 'could not keep the copy of the uploaded data: %s' % e)
+
+
+def _log(kind, text):
+    try:
+        import errlog
+        errlog.log(kind, text)
+    except Exception:
+        pass
+
+
+def pull_db(L, unsent=False):
+    """download the newest data. unsent: this PC had changes that were never uploaded —
+    they are added on top of the downloaded data (recover.py) and uploaded with the next upload"""
     db_path = CTX['db']
+    kept = None
     r = _call('db_pull', timeout=300)
     if not r.get('data'):
         return False
@@ -187,7 +207,8 @@ def pull_db(L):
         keep = os.path.join(os.path.dirname(db_path), 'before-download')
         os.makedirs(keep, exist_ok=True)
         c = sqlite3.connect(db_path)
-        d = sqlite3.connect(os.path.join(keep, 'clinic_%s.db' % datetime.datetime.now().strftime('%Y-%m-%d_%H%M%S')))
+        kept = os.path.join(keep, 'clinic_%s.db' % datetime.datetime.now().strftime('%Y-%m-%d_%H%M%S'))
+        d = sqlite3.connect(kept)
         c.backup(d)
         d.close()
         c.close()
@@ -204,6 +225,19 @@ def pull_db(L):
     save_local(db_path, {'seq': int(r['seq']), 'sig': db_sig(db_path)})
     STATE['seq'] = int(r['seq'])
     print(' Downloaded the newest data (saved by %s)' % (r.get('by') or 'another PC'))
+    merged = None
+    if unsent and kept:
+        try:
+            import recover
+            merged = recover.merge_into(db_path, kept, recover.base_path(db_path))
+        except Exception as e:
+            print(' Could not add the changes of this PC automatically (%s) - they are kept in data/before-download.' % e)
+            _log('recover', 'automatic merge failed: %s' % e)
+    _save_base(db_path, raw)
+    if merged:
+        save_local(db_path, {'seq': int(r['seq']), 'sig': 'merged'})     # never equal to a real stamp: uploaded within 30 seconds
+        print(' Added the changes that were never uploaded from this PC: %s' % merged)
+        _log('recover', 'unsent changes of this PC added to the newer data: %s' % merged)
     return True
 
 
@@ -374,9 +408,10 @@ def _startup_once(db_path, files_dir):
         STATE['holder'] = True
         st = load_local(db_path)
         if int(L.get('seq') or 0) > int(st.get('seq') or 0) or (int(L.get('seq') or 0) and not os.path.exists(db_path)):
-            if st.get('sig') and not st.get('clean') and db_sig(db_path) != st['sig']:
-                print(' Note: this PC had changes that were never uploaded - its copy is kept in data/before-download.')
-            pull_db(L)
+            unsent = bool(st.get('sig')) and not st.get('clean') and db_sig(db_path) != st['sig']
+            if unsent:
+                print(' This PC had changes that were never uploaded - adding them to the newer data ...')
+            pull_db(L, unsent)
         else:
             STATE['seq'] = int(st.get('seq') or 0)
         try:

@@ -151,15 +151,39 @@ def import_recover(conn, data):
             st['skipped'] += 1
             continue
         cur = rows[0]
+        base = f.get('base') or {}
         for k, val in f['set'].items():
             if k == '_meds':
-                if not conn.execute('SELECT 1 FROM visit_meds WHERE visit_id=?', (cur['id'],)).fetchone():
+                now_m = [r[0] for r in conn.execute('SELECT line FROM visit_meds WHERE visit_id=? ORDER BY seq, id', (cur['id'],))]
+                if now_m != val and (not now_m or ('_meds' in base and now_m == base['_meds'])):
+                    conn.execute('DELETE FROM visit_meds WHERE visit_id=?', (cur['id'],))
                     _meds(conn, cur['id'], val)
                     st['filled'] += 1
-            elif k in VF and (cur[k] in (None, '') or _longer(cur[k], val)):
+            elif k in VF and cur[k] != val and (cur[k] in (None, '') or _longer(cur[k], val) or (k in base and cur[k] == base[k])):
                 conn.execute('UPDATE visits SET %s=? WHERE id=?' % k, (val, cur['id']))
                 st['filled'] += 1
         _touch(conn, pid)
+    for f in data.get('patient_fill') or []:
+        rows = conn.execute('SELECT * FROM patients WHERE name_norm=?', (f['name_norm'],)).fetchall()
+        if len(rows) != 1:
+            st['skipped'] += 1
+            continue
+        cur, base = rows[0], f.get('base') or {}
+        for k, val in f['set'].items():
+            if k in PF and cur[k] != val and (cur[k] in (None, '') or _longer(cur[k], val) or (k in base and cur[k] == base[k])):
+                conn.execute('UPDATE patients SET %s=? WHERE id=?' % k, (val, cur['id']))
+                if k == 'phone':
+                    conn.execute('UPDATE patients SET phone_norm=? WHERE id=?', (norm_phone(val), cur['id']))
+                st['filled'] += 1
+        _touch(conn, cur['id'])
+    for lb in data.get('lab_remove') or []:
+        pid = _pid(conn, lb['name_norm'])
+        r = conn.execute('SELECT id FROM labs WHERE patient_id=? AND date=? AND code=? AND value IS ? LIMIT 1',
+                         (pid, lb['date'], lb['code'], lb['value'])).fetchone() if pid else None
+        if r:
+            conn.execute('DELETE FROM labs WHERE id=?', (r['id'],))
+            _touch(conn, pid)
+            st['labs'] += 1
     for lb in data.get('labs') or []:
         pid = _pid(conn, lb['name_norm'])
         if not pid or conn.execute('SELECT 1 FROM labs WHERE patient_id=? AND date=? AND code=? AND value IS ?',
