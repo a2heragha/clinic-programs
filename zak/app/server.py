@@ -1211,6 +1211,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, f.read(), MIME.get(os.path.splitext(full)[1], 'application/octet-stream'))
 
 
+BROWSER = {}
+
+
 def open_browser(url):
     """Opens the program in Chrome (or Edge) as a full-screen window without tabs or address bar.
     F11 leaves full screen. "fullscreen": false in config.json opens the normal browser instead.
@@ -1231,9 +1234,9 @@ def open_browser(url):
     prof = os.path.join(ROOT, 'data', 'browser-profile')
     try:
         os.makedirs(prof, exist_ok=True)
-        subprocess.Popen([exe, '--app=' + url, '--start-fullscreen', '--user-data-dir=' + prof,
-                          '--no-first-run', '--no-default-browser-check', '--disable-features=Translate'],
-                         close_fds=True)
+        BROWSER['proc'] = subprocess.Popen([exe, '--app=' + url, '--start-fullscreen', '--user-data-dir=' + prof,
+                                            '--no-first-run', '--no-default-browser-check', '--disable-features=Translate'],
+                                           close_fds=True)
     except Exception:
         webbrowser.open(url)
 
@@ -1256,17 +1259,25 @@ def local_ips():
 
 
 def close_browser():
-    """Windows: close the program's own browser window (the one opened with data/browser-profile)"""
+    """Windows: close the program's own browser window (opened with data/browser-profile)"""
     if os.name != 'nt':
         return
     import subprocess
-    prof = os.path.join(ROOT, 'data', 'browser-profile').replace("'", "''")
+    NOWIN = 0x08000000
+    p = BROWSER.get('proc')
+    if p is not None and p.poll() is None:            # the browser this program started: close it with its windows
+        try:
+            subprocess.run(['taskkill', '/F', '/T', '/PID', str(p.pid)], timeout=10, creationflags=NOWIN,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+    prof = os.path.join(ROOT, 'data', 'browser-profile').replace("'", "''")   # opened earlier / by another start
     ps = ("Get-CimInstance Win32_Process -Filter \"Name='chrome.exe' or Name='msedge.exe'\" | "
           "Where-Object { $_.CommandLine -and $_.CommandLine.Contains('%s') } | "
           "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" % prof)
     try:
-        subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', ps], timeout=20,
-                       creationflags=0x08000000)     # CREATE_NO_WINDOW
+        subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', ps], timeout=20, creationflags=NOWIN,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
         try:
             errlog.log('close', 'browser window not closed: %s' % e)
@@ -1274,11 +1285,36 @@ def close_browser():
             pass
 
 
+def close_console():
+    """Windows: close the black window too — the .bat file ends with 'pause', which would keep it open.
+    Every other process attached to this console (cmd.exe, the py launcher) is ended, then this one."""
+    if os.name != 'nt':
+        return
+    try:
+        import ctypes
+        arr = (ctypes.c_uint32 * 64)()
+        n = ctypes.windll.kernel32.GetConsoleProcessList(arr, 64)
+        me = os.getpid()
+        for pid in list(arr)[:n]:
+            if pid and pid != me:
+                h = ctypes.windll.kernel32.OpenProcess(0x0001, False, pid)      # PROCESS_TERMINATE
+                if h:
+                    ctypes.windll.kernel32.TerminateProcess(h, 0)
+                    ctypes.windll.kernel32.CloseHandle(h)
+    except Exception:
+        pass
+
+
 def shutdown_now(delay=3):
     """Close button: the last upload was already done by the request — show the result for a moment,
     close the program's browser window, then stop the server (the black window closes with it)"""
     time.sleep(delay)
+    try:
+        errlog.log('close', 'closed with the Close button')
+    except Exception:
+        pass
     close_browser()
+    close_console()
     os._exit(0)
 
 
