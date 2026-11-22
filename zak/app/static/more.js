@@ -269,8 +269,18 @@ function bindDayBar(root, date, go, kind) {
     if (e.key === 'ArrowRight') { e.preventDefault(); go(addDays(date, rtl ? -1 : 1)); }
   };
   document.removeEventListener('keydown', window.__dbKeys || (() => { })); window.__dbKeys = keys; document.addEventListener('keydown', keys);
+  // the counts are kept between refreshes, so the numbers do not blink when the page is redrawn
+  const cache = (window.__dayCnt = window.__dayCnt || {})[kind] || (window.__dayCnt[kind] = {});
+  const paint = () => $$('[data-cnt]', bar).forEach(i => {
+    const d = i.dataset.cnt; if (!(d in cache)) return;
+    const n = cache[d], txt = n ? String(n) : '';
+    if (i.textContent !== txt) i.textContent = txt;
+    i.classList.toggle('z', !n);
+  });
+  paint();
   api('GET', `/api/daycounts?kind=${kind}&from=${addDays(date, -3)}&to=${addDays(date, 3)}`).then(c => {
-    $$('[data-cnt]', bar).forEach(i => { const n = c[i.dataset.cnt]; i.textContent = n || ''; i.classList.toggle('z', !n); });
+    for (let k = -3; k <= 3; k++) { const d = addDays(date, k); cache[d] = c[d] || 0; }
+    paint();
   }).catch(() => { });
 }
 
