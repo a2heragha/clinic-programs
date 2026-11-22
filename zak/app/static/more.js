@@ -343,6 +343,7 @@ async function pcCheck() {
   let h; try { h = await api('GET', '/api/pc'); } catch (e) { return; }
   const en = ME && ME.role === 'doctor', local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   let msg = '', cls = 'bad';
+  if (h.closing) return;                        // the Close button is uploading the last data: its own message is shown
   if (h.readonly) msg = en ? `The program moved to PC “${h.other || '?'}” — this PC is read-only. Restart the program here to take it back.`
     : `البرنامج انتقل إلى الحاسبة «${h.other || '?'}» — هذه الحاسبة للقراءة فقط. أعد تشغيل البرنامج هنا لاستلامه.`;
   else if (h.conflict) msg = en ? `The other PC (${h.other || '?'}) saved newer data while this PC was offline. Do not enter data here — call support.`

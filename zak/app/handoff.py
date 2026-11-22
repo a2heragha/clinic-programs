@@ -583,7 +583,8 @@ def final_push():
     Returns (ok, error). On failure this PC keeps working (not read-only), so nothing is lost by trying."""
     if not STATE['enabled'] or not STATE['holder'] or STATE['readonly']:
         return True, None
-    STATE['readonly'] = True
+    STATE['readonly'] = True                   # no more changes while the last copy is uploaded
+    STATE['closing'] = True
     try:
         push_db(final=True)
         try:
@@ -596,6 +597,7 @@ def final_push():
         return True, None
     except Exception as e:
         STATE['readonly'] = False              # still the holder: keep working, try again later
+        STATE['closing'] = False
         print(' Last upload failed: %s' % e)
         return False, str(e)
 
