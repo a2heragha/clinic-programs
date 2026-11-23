@@ -121,10 +121,12 @@ input.wt{width:70px;border:0;padding:6px 4px;font-size:14px;direction:ltr;text-a
 .dmy>input.bad{border-color:var(--warn);background:var(--warn-bg)}
 .dmy-b{border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px;cursor:pointer;flex:none}
 .dmy-h{position:absolute!important;left:0;bottom:0;width:1px!important;height:1px!important;opacity:0;padding:0!important;border:0!important;pointer-events:none}
+.mpill{font-size:11px;padding:3px 8px;border-radius:10px;margin-inline:6px;white-space:nowrap;cursor:pointer;background:#eee;color:#555}
+.mpill.local{background:#dff5e3;color:#1b6b2e}.mpill.online{background:#e1ecfb;color:#1d4f91}.mpill.offline{background:#fde8d8;color:#9a4a10}
 </style>
 </head>
 <body>
-<header class="hidden" id="hd"><div class="logo" id="hlogo"></div><div class="t"><b id="ttl"></b><small id="who"></small></div><button id="out"></button></header>
+<header class="hidden" id="hd"><div class="logo" id="hlogo"></div><div class="t"><b id="ttl"></b><small id="who"></small></div><span id="mode" class="mpill hidden"></span><button id="out"></button></header>
 <main id="view"><div class="spin">…</div></main>
 <nav class="tabs hidden" id="tabs"></nav>
 <script>
@@ -142,6 +144,7 @@ const IC = {
   check: '<path d="M20 6 9 17l-5-5"/>', x: '<path d="M18 6 6 18M6 6l12 12"/>', undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/>',
   wa: '<path d="M3 21l1.6-4.7A8.5 8.5 0 1 1 8 19.6z"/><path d="M9 9.5c.3 2.3 2.2 4.4 4.6 5l1.2-1.3 2 .9c-.3 1.2-1.4 1.9-2.6 1.7-3.4-.6-6-3.3-6.5-6.7-.2-1.2.5-2.3 1.7-2.6l.9 2z"/>',
   trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15"/>', edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  wifi: '<path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M2 9a15 15 0 0 1 20 0"/><circle cx="12" cy="19.5" r="1"/>',
   camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
   auto: '<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M12 7v5l3 2"/>',
   hour: '<path d="M6 2h12M6 22h12M7 2v4a5 5 0 0 0 5 5 5 5 0 0 0 5-5V2M7 22v-4a5 5 0 0 1 5-5 5 5 0 0 1 5 5v4"/>',
@@ -178,9 +181,13 @@ const DR = () => ME && ME.role === 'doctor';
 const T = (ar, en) => DR() ? en : ar;
 
 /* the same page runs online (Google Apps Script) and on the clinic computer (m.html on the Wi-Fi) */
-const ONLINE = !!(window.google && google.script && google.script.run);
-if (!ONLINE) TOK = 'local';
+const APP = !!window.ZK;                 // the clinic's phone app: Wi-Fi to the clinic PC, or internet, or neither
+const ONLINE = !APP && !!(window.google && google.script && google.script.run);
+if (!ONLINE && !APP) TOK = 'local';
+if (APP) TOK = ls.get('zk_app_in') ? 'app' : null;
+const LOCALMODE = () => !ONLINE && (!APP || MODE === 'local');
 async function lapi(method, url, body) {
+  if (APP) return appLapi(method, url, body);
   const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
   let d = null; try { d = await r.json(); } catch (e) { }
   if (r.status === 401 && !url.endsWith('/login')) throw Object.assign(new Error('LOGIN'), { login: 1 });
@@ -205,6 +212,7 @@ const LOCAL = {
   apiUploadFile: async (t, a) => ({ id: (await lapi('POST', '/api/file', Object.assign({}, a, { patient_id: +a.patient_id, title: '' }))).id }),
 };
 function rpc(fn, ...args) {
+  if (APP) return appRpc(fn, args);
   if (!ONLINE) return LOCAL[fn].apply(null, args).then(r => Object.assign({ ok: true }, r), e => {
     if (e.login) { logout(); throw new Error('سجّل الدخول / Sign in'); }
     throw new Error(e.message === 'Failed to fetch' ? T('لا يوجد اتصال بحاسبة العيادة', 'Clinic computer not reachable') : e.message);
@@ -223,16 +231,210 @@ const stTxt = s => T(ST[s || ''][0], ST[s || ''][1]);
 const CALL = { yes: ['تم الاتصال — يحضر', 'Called — coming'], no: ['تم الاتصال — لن يحضر', 'Called — not coming'], noans: ['لم يرد', 'No answer'] };
 const ageOf = by => by ? (new Date().getFullYear() - +by) : '';
 
+/* ---------------------------------------------------------------- the phone app (Android): three ways to work
+   local   — the clinic PC on the same Wi-Fi (fast, the PC's own data)
+   online  — the clinic's Google link (from anywhere)
+   offline — neither: the last data seen is shown, and bookings / new patients / photos wait on the phone
+             until the PC or the internet is reached again, then they are sent in order */
+const GURL0 = 'https://script.google.com/macros/s/AKfycbyWDcGaYGQ5ImcqDF5tZei7NRmVpA0MSis6KW_TT5bVf1q220dKIY1s86t3tXiPpenb/exec';
+let MODE = ls.get('zk_mode') || 'offline', PCBASE = ls.get('zk_pc') ? 'http:/' + '/' + ls.get('zk_pc') + ':8080' : '', PINMEM = null, PROBE_T = 0, FLUSHING = false;
+const ZQ = {}; let ZN = 0;
+window.__zk = (id, st, tx) => { const f = ZQ[id]; delete ZQ[id]; if (f) f(st, tx); };
+const zhttp = (method, url, body, headers, ms) => new Promise(res => {
+  const id = ++ZN; ZQ[id] = (st, tx) => res({ status: st, text: tx || '' });
+  ZK.http(id, method, url, JSON.stringify(headers || {}), body == null ? '' : body, ms || 20000);
+});
+const gurl = () => ls.get('zk_gurl') || GURL0;
+const netErr = () => Object.assign(new Error(T('لا يوجد اتصال', 'No connection')), { net: 1 });
+async function appLapi(method, url, body) {
+  if (!PCBASE) throw netErr();
+  const h = { 'Content-Type': 'application/json' }, lt = ls.get('zk_ltok'); if (lt) h['X-ZK-Token'] = lt;
+  const r = await zhttp(method, PCBASE + url, body ? JSON.stringify(body) : null, h, 15000);
+  if (!r.status) throw netErr();
+  let d = null; try { d = JSON.parse(r.text); } catch (e) { }
+  if (r.status === 401 && !url.endsWith('/login')) throw Object.assign(new Error('LOGIN'), { login: 1 });
+  if (r.status >= 400) { const m = (d && d.error) || ('Error ' + r.status); throw new Error(/wrong pin/i.test(m) ? 'WRONG' : m); }
+  return d;
+}
+async function grpc(fn, args) {
+  const r = await zhttp('POST', gurl(), JSON.stringify({ action: 'rpc', fn, args }), { 'Content-Type': 'text/plain;charset=utf-8' }, 40000);
+  if (!r.status) throw netErr();
+  let d = null; try { d = JSON.parse(r.text); } catch (e) { throw netErr(); }
+  if (d && d.moved) { ls.set('zk_gurl', d.moved); return grpc(fn, args); }
+  if (d && d.error === 'LOGIN') throw Object.assign(new Error('LOGIN'), { login: 1 });
+  if (!d || !d.ok) throw new Error(d && d.error || 'Error');
+  return d;
+}
+/* which way works now: the PC first (saved address, then a search on the Wi-Fi), then Google */
+async function probe(force) {
+  if (!force && Date.now() - PROBE_T < 25000) return MODE;
+  PROBE_T = Date.now();
+  const hello = async ip => { const r = await zhttp('GET', 'http:/' + '/' + ip + ':8080/api/hello', null, {}, 1500); try { return r.status === 200 && JSON.parse(r.text).app === 'zakclinic'; } catch (e) { return false; } };
+  let m = 'offline';
+  if (ls.get('zk_pc') && await hello(ls.get('zk_pc'))) m = 'local';
+  else {
+    const found = await new Promise(res => { const id = ++ZN; ZQ[id] = (st, tx) => res(st ? tx : ''); ZK.scan(id, 8080, '/api/hello', 'zakclinic'); });
+    if (found) { ls.set('zk_pc', found); m = 'local'; }
+    else { const r = await zhttp('POST', gurl(), JSON.stringify({ action: 'rpc', fn: 'none', args: [] }), { 'Content-Type': 'text/plain;charset=utf-8' }, 12000); if (r.status) m = 'online'; }
+  }
+  PCBASE = ls.get('zk_pc') ? 'http:/' + '/' + ls.get('zk_pc') + ':8080' : '';
+  if (m !== MODE) { MODE = m; ls.set('zk_mode', m); modePill(); }
+  if (m !== 'offline' && !FLUSHING) flushQueue();
+  return m;
+}
+function modePill() {
+  const el = $('#mode'); if (!el) return;
+  const n = qCount();
+  el.className = 'mpill ' + MODE;
+  el.textContent = MODE === 'local' ? T('محلي', 'Wi-Fi') : MODE === 'online' ? T('إنترنت', 'Online') : T('بدون اتصال', 'Offline') + (n ? ' · ' + n : '');
+  el.title = n ? T(n + ' عملية بانتظار الإرسال', n + ' waiting to be sent') : '';
+}
+/* a session for the way in use: the PIN of this sign-in is kept in memory to sign in on the other way when it changes */
+async function ensureSession() {
+  if (MODE === 'local' && !ls.get('zk_ltok') && PINMEM) { const d = await appLapi('POST', '/api/login', { pin: PINMEM, want_token: 1 }); ls.set('zk_ltok', d.token); }
+  if (MODE === 'online' && !ls.get('zk_gtok') && PINMEM) { const d = await grpc('apiLogin', [PINMEM]); ls.set('zk_gtok', d.token); }
+}
+async function viaMode(fn, args) {
+  if (MODE === 'local') return Object.assign({ ok: true }, await LOCAL[fn].apply(null, args));
+  const a = args.slice(); if (fn !== 'apiLogin') a[0] = ls.get('zk_gtok');
+  return grpc(fn, a);
+}
+const READS = { apiBoot: () => 'c_boot', apiDay: a => 'c_day_' + a[1], apiRecall: () => 'c_recall', apiClinical: a => 'c_clin_' + a[1] };
+const WRITES = ['apiSaveAppt', 'apiNewPatient', 'apiEditPatient', 'apiUploadFile'];
+async function appRpc(fn, args) {
+  if (fn === 'apiLogin') return appLogin(args[0]);
+  await probe(false);
+  if (MODE !== 'offline') {
+    try {
+      await ensureSession();
+      let r;
+      try { r = await viaMode(fn, args); }
+      catch (e) {
+        if (!e.login || !PINMEM) throw e;
+        ls.set(MODE === 'local' ? 'zk_ltok' : 'zk_gtok', null); await ensureSession(); r = await viaMode(fn, args);
+      }
+      if (READS[fn]) ls.set(READS[fn](args), JSON.stringify(Object.assign({}, r, { cached_t: Date.now() })));
+      return r;
+    } catch (e) {
+      if (e.login && !PINMEM) { ls.set('zk_app_in', null); setTimeout(logout, 50); throw new Error('سجّل الدخول / Sign in'); }
+      if (!e.net) throw e;
+      MODE = 'offline'; ls.set('zk_mode', MODE); PROBE_T = Date.now(); modePill();
+    }
+  }
+  return offlineRpc(fn, args);
+}
+async function appLogin(pin) {
+  await probe(true);
+  if (MODE === 'offline') {           // no PC, no internet: the PIN of the last sign-in on this phone
+    if (ls.get('zk_pinh') && ls.get('zk_pinh') === await sha(pin)) { PINMEM = pin; ls.set('zk_app_in', '1'); return { ok: true, token: 'app' }; }
+    throw new Error(ls.get('zk_pinh') ? 'WRONG' : T('أول دخول يحتاج اتصالاً بحاسبة العيادة أو بالإنترنت', 'The first sign-in needs the clinic PC or the internet'));
+  }
+  if (MODE === 'local') { const d = await appLapi('POST', '/api/login', { pin, want_token: 1 }); ls.set('zk_ltok', d.token); ls.set('zk_gtok', null); }
+  else { const d = await grpc('apiLogin', [pin]); ls.set('zk_gtok', d.token); ls.set('zk_ltok', null); }
+  PINMEM = pin; ls.set('zk_pinh', await sha(pin)); ls.set('zk_app_in', '1');
+  return { ok: true, token: 'app' };
+}
+async function sha(s) { if (!(window.crypto && crypto.subtle)) { let h = 0x811c9dc5; for (const ch of 'zk:' + s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return 'f' + h.toString(16); } const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('zk:' + s)); return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join(''); }
+function appLogout() {
+  if (MODE === 'local' && ls.get('zk_ltok')) appLapi('POST', '/api/logout').catch(() => { });
+  ['zk_ltok', 'zk_gtok', 'zk_app_in'].forEach(k => ls.set(k, null)); PINMEM = null;
+}
+function appLoginExtra() {
+  return `<div class="small muted" style="margin-top:10px">${ic('wifi')} <span id="lgMode">…</span><br><a href="#" id="pcSet" class="small">${'عنوان حاسبة العيادة'}</a></div>`;
+}
+function appLoginWire() {
+  const m = $('#lgMode'); if (!m) return;
+  probe(true).then(x => { m.textContent = x === 'local' ? 'متصل بحاسبة العيادة (' + ls.get('zk_pc') + ')' : x === 'online' ? 'متصل بالإنترنت' : 'لا يوجد اتصال'; });
+  $('#pcSet').onclick = e => { e.preventDefault(); pcAddress(); };
+}
+function pcAddress() {
+  const ip = prompt('عنوان حاسبة العيادة على الـ Wi-Fi (يظهر في النافذة السوداء، مثل 10.38.16.252). اتركه فارغاً للبحث التلقائي:', ls.get('zk_pc') || '');
+  if (ip === null) return;
+  const v = ip.trim().replace(/^https?:\/\//, '').replace(/[:/].*$/, '');
+  ls.set('zk_pc', v || null); PCBASE = v ? 'http:/' + '/' + v + ':8080' : ''; ls.set('zk_ltok', null);
+  probe(true).then(x => { toast(x === 'local' ? 'تم الاتصال بالحاسبة' : 'لم يتم العثور على الحاسبة', x !== 'local'); if ($('#lgMode')) appLoginWire(); });
+}
+
+/* ---- offline: the last data seen, and the waiting changes */
+const qGet = () => { try { return JSON.parse(ls.get('zk_queue') || '[]'); } catch (e) { return []; } };
+const qSet = q => { ls.set('zk_queue', JSON.stringify(q)); modePill(); };
+const qCount = () => qGet().length;
+function cached(k) { try { return JSON.parse(ls.get(k)); } catch (e) { return null; } }
+async function offlineRpc(fn, args) {
+  if (READS[fn]) {
+    let c = cached(READS[fn](args));
+    if (!c && fn === 'apiDay') c = { ok: true, rows: [] };
+    if (!c) throw new Error(T('غير متوفر بدون اتصال — لم يُفتح من قبل على هذا الهاتف', 'Not available offline'));
+    if (fn === 'apiBoot' && B && B.patients) c.patients = B.patients;          // patients added offline
+    return c;
+  }
+  if (WRITES.indexOf(fn) < 0) throw netErr();
+  const q = qGet(), n = Date.now() + '' + Math.floor(Math.random() * 1000);
+  const a = JSON.parse(JSON.stringify(args));
+  if (fn === 'apiUploadFile') {          // photos are kept by the app itself (they are too big for the page's storage)
+    const key = 'up_' + n; ZK.store(key, a[1].data); a[1].data = null; a[1].stored = key;
+  }
+  q.push({ fn, args: a, tmp: n, t: Date.now() }); qSet(q);
+  let out = { ok: true, queued: true };
+  if (fn === 'apiNewPatient') out.id = 'q:' + n;
+  if (fn === 'apiSaveAppt') {           // shown at once in the cached day
+    const x = a[1], ex = x.uid ? findCachedAppt(x.uid) : null;
+    const uid = x.uid || 'q:' + n; out.uid = uid;
+    const date = (ex && ex.date) || x.date;
+    if (date) {
+      const k = 'c_day_' + date, c = cached(k) || { ok: true, rows: [] };
+      const row = c.rows.find(r => r.uid === uid);
+      if (x.deleted === '1') c.rows = c.rows.filter(r => r.uid !== uid);
+      else if (row) Object.assign(row, x, { pending: 1 });
+      else c.rows.push(Object.assign({ status: '', seq: '' }, x, { uid, pending: 1 }));
+      ls.set(k, JSON.stringify(c));
+    }
+  }
+  toast(T('لا يوجد اتصال — حُفظ على الهاتف ويُرسل لاحقاً', 'Offline — saved on the phone, sent later'));
+  return out;
+}
+function findCachedAppt(uid) {
+  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.indexOf('c_day_') !== 0) continue;
+    const c = cached(k); const r = c && c.rows && c.rows.find(x => x.uid === uid); if (r) return r; }
+  return null;
+}
+async function flushQueue() {
+  if (FLUSHING) return; FLUSHING = true;
+  try {
+    let q = qGet(); if (!q.length) return;
+    const ids = JSON.parse(ls.get('zk_qids') || '{}'), uids = JSON.parse(ls.get('zk_quids') || '{}');
+    await ensureSession();
+    while (q.length) {
+      const it = q[0], a = it.args;
+      const fix = o => { if (o && typeof o === 'object') { if (ids[o.patient_id]) o.patient_id = ids[o.patient_id]; if (o.uid && String(o.uid).indexOf('q:') === 0) { if (uids[o.uid]) o.uid = uids[o.uid]; else delete o.uid; } } };
+      a.forEach(fix);
+      if (it.fn === 'apiEditPatient' && ids[a[1]]) a[1] = ids[a[1]];
+      if (it.fn === 'apiUploadFile' && a[1].stored) { a[1].data = ZK.load(a[1].stored); }
+      if (it.fn === 'apiUploadFile' && !a[1].data) { q.shift(); qSet(q); continue; }        // photo lost: skip
+      if (String(a[1] && a[1].patient_id || '').indexOf('q:') === 0) { q.shift(); qSet(q); continue; }   // its new patient failed
+      let r;
+      try { r = await viaMode(it.fn, a); }
+      catch (e) { if (e.net || e.login) break; toast(T('لم يُرسل: ', 'Not sent: ') + e.message, true); r = null; }
+      if (r && it.fn === 'apiNewPatient') { ids['q:' + it.tmp] = String(r.id); ls.set('zk_qids', JSON.stringify(ids)); }
+      if (r && it.fn === 'apiSaveAppt' && r.uid && !a[1].uid) { uids['q:' + it.tmp] = String(r.uid); ls.set('zk_quids', JSON.stringify(uids)); }
+      if (it.fn === 'apiUploadFile' && a[1].stored) ZK.drop(a[1].stored);
+      q.shift(); qSet(q);
+    }
+    if (!q.length) { ls.set('zk_qids', null); ls.set('zk_quids', null); toast(T('أُرسل كل ما حُفظ على الهاتف', 'Everything saved on the phone was sent')); if (VIEW) go(VIEW); }
+  } catch (e) { } finally { FLUSHING = false; modePill(); }
+}
+if (APP) setInterval(() => { probe(false); }, 30000);
+
 /* ---------------------------------------------------------------- login */
-function logout() { if (!ONLINE && TOK) fetch('/api/logout', { method: 'POST' }).catch(() => { }); ls.set('zk_tok', null); TOK = null; ME = null; clearInterval(timer); showLogin(); }
+function logout() { if (APP) appLogout(); else if (!ONLINE && TOK) fetch('/api/logout', { method: 'POST' }).catch(() => { }); ls.set('zk_tok', null); TOK = null; ME = null; clearInterval(timer); showLogin(); }
 function showLogin() {
   document.documentElement.dir = 'rtl'; document.documentElement.lang = 'ar';
   $('#hd').classList.add('hidden'); $('#tabs').classList.add('hidden');
   $('#view').innerHTML = `<div class="login card"><div class="logo">${ic('clinic')}</div><b style="font-size:18px">${esc(ls.get('zk_clinic') || 'العيادة')}</b>
     <div class="small muted" style="margin-top:6px">اكتب الرقم السري — يتم الدخول تلقائياً<br><span class="ltr">Type your PIN</span></div>
     <input id="pin" type="password" inputmode="numeric" autocomplete="off"><div class="err" id="err"></div>
-    ${ONLINE ? '' : '<p><a href="/?desktop=1" class="small muted">النسخة الكاملة / Full version</a></p>'}</div>`;
-  const pin = $('#pin'); let seq = 0, et; pin.focus();
+    ${ONLINE || APP ? '' : '<p><a href="/?desktop=1" class="small muted">النسخة الكاملة / Full version</a></p>'}${APP ? appLoginExtra() : ''}</div>`;
+  const pin = $('#pin'); let seq = 0, et; pin.focus(); if (APP) appLoginWire();
   pin.addEventListener('input', async () => {
     const v = pin.value, my = ++seq; $('#err').textContent = ''; clearTimeout(et);
     if (v.length < 4) return;
@@ -251,7 +453,7 @@ async function boot() {
   try { const th = JSON.parse(B.theme || '{}'); if (/^#[0-9a-f]{6}$/i.test(th.accent || '')) { document.documentElement.style.setProperty('--accent', th.accent); $('meta[name=theme-color]').content = th.accent; } } catch (e) { }
   document.documentElement.dir = DR() ? 'ltr' : 'rtl'; document.documentElement.lang = DR() ? 'en' : 'ar';
   $('#hlogo').innerHTML = ic('clinic'); $('#ttl').textContent = B.clinic; $('#who').textContent = ME.name; $('#out').innerHTML = ic('out'); $('#out').title = T('خروج', 'Sign out'); $('#out').onclick = logout;
-  $('#hd').classList.remove('hidden');
+  $('#hd').classList.remove('hidden'); if (APP) { $('#mode').classList.remove('hidden'); modePill(); $('#mode').onclick = () => probe(true).then(m => toast(m === 'offline' ? T('لا يوجد اتصال', 'No connection') : T('متصل', 'Connected'))); }
   const tabs = DR() ? [['day', 'Appointments', 'cal'], ['calls', 'Follow-up', 'phone'], ['find', 'Patients', 'search']]
     : [['day', 'المواعيد', 'cal'], ['calls', 'المتابعة', 'phone'], ['find', 'المرضى', 'search'], ['new', 'مريض جديد', 'add']];
   $('#tabs').innerHTML = tabs.map(([k, l, i]) => `<button data-t="${k}">${ic(i)}<span>${l}</span>${k === 'calls' ? '<b class="bd hidden" id="rcN"></b>' : ''}</button>`).join(''); $('#tabs').classList.remove('hidden');
@@ -434,11 +636,11 @@ async function patient(pid) {
     ${DR() ? '' : `<div class="row mt" style="background:var(--accent-2);border-radius:12px;padding:8px"><label class="wtl" style="flex:1;font-size:14px">${ic('scale')}الوزن اليوم<input class="wt" id="pwt" inputmode="decimal" placeholder="كغم" style="flex:1"></label><button class="s pri" id="pwts" style="flex:0 0 auto">${ic('check')}حفظ الوزن</button></div>
       <h3 class="mt">${ic('cal')}حجز موعد</h3><div class="row"><input type="date" id="bd" value="${todayISO()}">${timeSel('bt')}</div>
       <input id="bn" class="mt" placeholder="ملاحظة"><button class="p w100 mt" id="bok">${ic('check')}حجز</button>`}
-    ${!DR() ? `<div class="row mt">${ONLINE ? '' : `<button class="s" id="ped" style="justify-content:center;padding:10px">${ic('edit')}تعديل البيانات</button>`}<label class="upl">${ic('camera')}تصوير فحص<input type="file" id="upc" accept="${'image/' + '*'}" capture="environment" hidden></label><label class="upl">${ic('camera')}رفع ملفات فحص<input type="file" id="up" accept="${'image/' + '*,application/pdf'}" multiple hidden></label></div>
+    ${!DR() ? `<div class="row mt">${!LOCALMODE() ? '' : `<button class="s" id="ped" style="justify-content:center;padding:10px">${ic('edit')}تعديل البيانات</button>`}<label class="upl">${ic('camera')}تصوير فحص<input type="file" id="upc" accept="${'image/' + '*'}" capture="environment" hidden></label><label class="upl">${ic('camera')}رفع ملفات فحص<input type="file" id="up" accept="${'image/' + '*,application/pdf'}" multiple hidden></label></div>
       <div class="small muted mt">الفحوصات تظهر للطبيب في ملف المريض، ويختار هو قراءتها بالذكاء الاصطناعي.</div>` : ''}</div>`;
   if (!DR()) {
     v.innerHTML = head + (String(pid).startsWith('n:') ? '<div class="card small muted">ملف جديد — يظهر رقمه بعد المزامنة مع حاسبة العيادة.</div>' : '');
-    if (!ONLINE) $('#ped').onclick = async () => { try { const d = await lapi('GET', '/api/patient/' + pid); go('new', { edit: pid, p: d.patient }); } catch (e) { toast(e.message, true); } };
+    if ($('#ped')) $('#ped').onclick = async () => { try { const d = await lapi('GET', '/api/patient/' + pid); go('new', { edit: pid, p: d.patient }); } catch (e) { toast(e.message, true); } };
     const upl = async e => {      // result sheets brought by the patient → the doctor sees them in the file
       const fs = Array.from(e.target.files); e.target.value = ''; if (!fs.length) return; toast('جارٍ الرفع…');
       let ok = 0;

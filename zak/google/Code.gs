@@ -177,6 +177,11 @@ function upsertAppts_(rows, by) {
 function doPost(e) {
   let req;
   try { req = JSON.parse(e.postData.contents); } catch (err) { return json_({ ok: false, error: 'Invalid request' }); }
+  if (req.action === 'rpc') {              // the clinic's phone app: the same calls as the phone page (each checks the PIN session itself)
+    const mv0 = prop_('MOVED_TO');
+    if (mv0) return json_({ ok: false, moved: mv0, error: 'moved' });
+    return json_(call(String(req.fn || ''), req.args || []));
+  }
   if (!req.token || req.token !== prop_('TOKEN')) return json_({ ok: false, error: 'Wrong sync token' });
   const mv = prop_('MOVED_TO');            // the clinic moved to another Google account: tell the program the new link
   if (mv) return json_({ ok: false, moved: mv, error: 'moved' });

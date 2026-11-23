@@ -669,7 +669,7 @@ def pin_taken(conn, pin, except_id=None):
     return False
 
 
-PUBLIC = {('POST', 'clienterror'), ('GET', 'me'), ('GET', 'users'), ('POST', 'login'), ('POST', 'setup'), ('POST', 'logout')}
+PUBLIC = {('POST', 'clienterror'), ('GET', 'me'), ('GET', 'users'), ('POST', 'login'), ('POST', 'setup'), ('POST', 'logout'), ('GET', 'hello')}
 SECRETARY = {('POST', 'weight'), ('GET', 'daycounts'), ('GET', 'recall'), ('GET', 'mboot'), ('GET', 'mday'), ('GET', 'search'), ('GET', 'patient'), ('GET', 'similar'), ('GET', 'appts'), ('GET', 'lists'),
              ('POST', 'patient'), ('PUT', 'patient'), ('GET', 'family_suggest'), ('POST', 'link'), ('DELETE', 'link'), ('POST', 'appt'), ('PUT', 'appt'), ('DELETE', 'appt'), ('PUT', 'my_pin'), ('POST', 'file'), ('GET', 'pc'), ('POST', 'shutdown')}
 
@@ -693,6 +693,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _token(self):
+        if self.headers.get('X-ZK-Token'):                 # the clinic's phone app (no cookies)
+            return self.headers.get('X-ZK-Token')
         for part in (self.headers.get('Cookie') or '').split(';'):
             k, _, v = part.strip().partition('=')
             if k == 'zk':
@@ -744,6 +746,9 @@ class Handler(BaseHTTPRequestHandler):
                         raise ApiError('Please sign in', 401)
                     if user['role'] != 'doctor' and (method, p0) not in SECRETARY:
                         raise ApiError('Doctor only', 403)
+                if p0 == 'hello' and method == 'GET':             # the phone app looking for the clinic PC on the Wi-Fi
+                    r0 = conn.execute("SELECT v FROM meta WHERE k='clinic_name'").fetchone()
+                    return self._send(200, {'app': 'zakclinic', 'clinic': (r0[0] if r0 else '') or '', 'pc': socket.gethostname()})
                 if p0 == 'clienterror' and method == 'POST':      # an error in the browser
                     errlog.log('browser', str(body.get('msg') or '')[:300], '%s\n%s\n%s' % (body.get('where') or '', body.get('stack') or '', (user or {}).get('name') or ''))
                     return self._send(200, {'ok': True})
@@ -1011,7 +1016,10 @@ class Handler(BaseHTTPRequestHandler):
             conn.execute('INSERT INTO sessions VALUES(?,?,?)', (tok, r['id'], int(time.time())))
             conn.execute('DELETE FROM sessions WHERE created < ?', (int(time.time()) - SESS_DAYS * 86400,))
             self._cookie = tok
-            return {'ok': True, 'user': dict(name=r['name'], role=r['role'])}
+            out = {'ok': True, 'user': dict(name=r['name'], role=r['role'])}
+            if b.get('want_token'):
+                out['token'] = tok
+            return out
         if p0 == 'logout':
             conn.execute('DELETE FROM sessions WHERE token=?', (self._token(),))
             self._cookie = ''
