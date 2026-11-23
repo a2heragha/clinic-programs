@@ -326,13 +326,15 @@ async function appRpc(fn, args) {
 async function appLogin(pin) {
   await probe(true);
   if (MODE === 'offline') {           // no PC, no internet: the PIN of the last sign-in on this phone
-    if (ls.get('zk_pinh') && ls.get('zk_pinh') === await sha(pin)) { PINMEM = pin; ls.set('zk_app_in', '1'); return { ok: true, token: 'app' }; }
+    if (ls.get('zk_pinh') && ls.get('zk_pinh') === await sha(pin)) { PINMEM = pin; ls.set('zk_app_in', '1'); return { ok: true, token: 'app', role: ls.get('zk_role') }; }
     throw new Error(ls.get('zk_pinh') ? 'WRONG' : T('أول دخول يحتاج اتصالاً بحاسبة العيادة أو بالإنترنت', 'The first sign-in needs the clinic PC or the internet'));
   }
-  if (MODE === 'local') { const d = await appLapi('POST', '/api/login', { pin, want_token: 1 }); ls.set('zk_ltok', d.token); ls.set('zk_gtok', null); }
-  else { const d = await grpc('apiLogin', [pin]); ls.set('zk_gtok', d.token); ls.set('zk_ltok', null); }
+  let d;
+  if (MODE === 'local') { d = await appLapi('POST', '/api/login', { pin, want_token: 1 }); ls.set('zk_ltok', d.token); ls.set('zk_gtok', null); }
+  else { d = await grpc('apiLogin', [pin]); ls.set('zk_gtok', d.token); ls.set('zk_ltok', null); }
   PINMEM = pin; ls.set('zk_pinh', await sha(pin)); ls.set('zk_app_in', '1');
-  return { ok: true, token: 'app' };
+  ls.set('zk_role', d.user && d.user.role || null);
+  return { ok: true, token: 'app', role: d.user && d.user.role };
 }
 async function sha(s) { if (!(window.crypto && crypto.subtle)) { let h = 0x811c9dc5; for (const ch of 'zk:' + s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return 'f' + h.toString(16); } const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('zk:' + s)); return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join(''); }
 function appLogout() {
@@ -438,7 +440,9 @@ function showLogin() {
   pin.addEventListener('input', async () => {
     const v = pin.value, my = ++seq; $('#err').textContent = ''; clearTimeout(et);
     if (v.length < 4) return;
-    try { const r = await rpc('apiLogin', v); if (my !== seq) return; TOK = r.token; if (ONLINE) ls.set('zk_tok', TOK); boot(); }
+    try { const r = await rpc('apiLogin', v); if (my !== seq) return;
+      if (APP && r.role === 'doctor' && ZK.full) { $('#view').innerHTML = '<div class="spin">…</div>'; return ZK.full(); }   // the doctor: the full program on this phone
+      TOK = r.token; if (ONLINE) ls.set('zk_tok', TOK); boot(); }
     catch (e) { if (my !== seq) return; if (e.message !== 'WRONG') { $('#err').textContent = e.message; return; }
       et = setTimeout(() => { if (pin.value === v) $('#err').textContent = 'الرقم السري غير صحيح / Wrong PIN'; }, 1200); }
   });
