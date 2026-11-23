@@ -1110,7 +1110,9 @@ function viewPatientBasic(v, d) {
     <div class="wrow"><label class="wbox">${ic('scale')}Weight today (kg)<input id="pWt" data-lang="en" inputmode="decimal" style="width:80px" value="${d.today_weight != null ? d.today_weight : ''}"></label><button class="primary" id="pWtS">Save weight</button>
       <span class="muted small">${(d.weights || []).length ? 'Previous: ' + d.weights.map(w => `${fnum(w[1])} kg <span class="muted">(${dmy(w[0])})</span>`).join(' · ') : ''}</span></div>
     <div class="famline" id="famLine"></div><div id="linker" class="linker hidden"></div>
-    <div class="row"><label class="small" style="cursor:pointer"><span class="primary" style="background:var(--accent);color:#fff;border-radius:6px;padding:5px 12px;display:inline-block">+ Attach investigation (image / PDF)</span><input type="file" id="sUp" accept="image/*,application/pdf" multiple hidden></label></div>
+    <div class="row"><label class="small" style="cursor:pointer"><span class="primary" style="background:var(--accent);color:#fff;border-radius:6px;padding:5px 12px;display:inline-block">📷 Photograph a result</span><input type="file" id="sCam" accept="image/*" capture="environment" hidden></label>
+      <label class="small" style="cursor:pointer"><span class="primary" style="background:var(--accent);color:#fff;border-radius:6px;padding:5px 12px;display:inline-block">+ Attach investigation (image / PDF)</span><input type="file" id="sUp" accept="image/*,application/pdf" multiple hidden></label>
+      <span class="muted small">The doctor sees it as a new result in the file.</span></div>
     <h3>Upcoming appointments</h3>${d.appointments.length ? d.appointments.map(a => `<div>${dmy(a.date)} ${esc(fmtTime(a.time))} — ${ST[a.status || '']}</div>`).join('') : '<div class="muted">None</div>'}
     <div class="row" style="margin-top:10px"><label>Date<input type="date" id="bd" value="${todayISO()}"></label><label>Time${timeSelect('bt')}</label><label class="grow">Note<input id="bn" data-lang="en" dir="auto"></label><button class="primary" id="bk">Book appointment</button></div></div>`;
   $('#ed').onclick = () => location.hash = '#/edit/' + p.id;
@@ -1118,6 +1120,7 @@ function viewPatientBasic(v, d) {
     try { const r = await api('POST', '/api/weight', { patient_id: p.id, weight: w }); toast(r.created ? 'Weight saved — added to today\'s list as waiting' : 'Weight saved'); } catch (e) { toast(e.message, true); } };
   $('#pWtS').onclick = sw; $('#pWt').onkeydown = e => { if (e.key === 'Enter') sw(); };
   renderFamily(d);
+  $('#sCam').onchange = e => $('#sUp').onchange(e);
   $('#sUp').onchange = async e => { P = { patient: p, visits: [], labs: [], files: [] }; VIS.id = null; const fs = Array.from(e.target.files);
     for (const f of fs) { try { const pl = await fileToPayload(f); await api('POST', '/api/file', Object.assign(pl, { patient_id: p.id, date: todayISO(), name: f.name, title: f.name.replace(/\.[^.]+$/, '').slice(0, 40) })); } catch (er) { toast(er.message, true); } }
     toast(fs.length + ' file(s) attached'); viewPatient(v, p.id, {}); };
