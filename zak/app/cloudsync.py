@@ -167,6 +167,50 @@ def local_patient_id(conn, pid):
     return pid if conn.execute('SELECT 1 FROM patients WHERE id=?', (pid,)).fetchone() else None
 
 
+def dup_of(conn, date, pid, name, exclude=None):
+    """the other appointment of the same patient on the same day (one per patient per day)"""
+    if not date:
+        return None
+    if pid:
+        q, a = 'patient_id=?', [pid]
+    elif str(name or '').strip():
+        q, a = "patient_id IS NULL AND TRIM(name)=?", [str(name).strip()]
+    else:
+        return None
+    return conn.execute('SELECT * FROM appointments WHERE date=? AND %s AND COALESCE(deleted,0)=0 AND COALESCE(hold,0)=0 AND id IS NOT ?'
+                        ' ORDER BY id LIMIT 1' % q, [date] + a + [exclude]).fetchone()
+
+
+ST_RANK = {'done': 5, 'in': 4, 'waiting': 3, 'noshow': 2, '': 1}
+
+
+def dedupe(conn):
+    """old duplicates (same patient, same day): the most advanced one is kept, it takes the missing details
+    (time, weight, note) of the others, which are deleted — on Google too, with the next upload"""
+    n = 0
+    groups = conn.execute("""SELECT date, COALESCE(CAST(patient_id AS TEXT), 'n:' || TRIM(name)) k, GROUP_CONCAT(id) ids
+                             FROM appointments WHERE COALESCE(deleted,0)=0 AND COALESCE(hold,0)=0 AND (patient_id IS NOT NULL OR TRIM(COALESCE(name,''))<>'')
+                             GROUP BY date, k HAVING COUNT(*) > 1""").fetchall()
+    for g in groups:
+        rows = [dict(r) for r in conn.execute('SELECT * FROM appointments WHERE id IN (%s)' % g['ids'])]
+        rows.sort(key=lambda r: (-ST_RANK.get(r.get('status') or '', 1), 0 if r.get('visit_id') else 1, r['id']))
+        keep, rest = rows[0], rows[1:]
+        fill = {}
+        for k in ('time', 'weight', 'note', 'phone', 'call', 'reminded'):
+            if keep.get(k) in (None, ''):
+                v = next((r[k] for r in rest if r.get(k) not in (None, '')), None)
+                if v is not None:
+                    fill[k] = v
+        now = now_ms()
+        if fill:
+            fill['updated_at'] = now
+            conn.execute('UPDATE appointments SET %s WHERE id=?' % ', '.join('%s=?' % k for k in fill), list(fill.values()) + [keep['id']])
+        for r in rest:
+            conn.execute('UPDATE appointments SET deleted=1, updated_at=? WHERE id=?', (now, r['id']))
+            n += 1
+    return n
+
+
 def apply_appt(conn, rem):
     uid = rem.get('uid')
     if not uid or not rem.get('date'):
@@ -207,6 +251,9 @@ def apply_appt(conn, rem):
     else:
         if vals['deleted']:
             return False
+        if not vals.get('hold') and dup_of(conn, vals['date'], pid, vals['name']):
+            vals['deleted'] = 1                 # a second booking of the same patient that day: kept as deleted,
+            vals['updated_at'] = now_ms()       # and the deletion goes back to the phone with the next upload
         vals['uid'] = uid
         vals['created_by'] = str(rem.get('by') or 'phone')
         if vals['seq'] is None:
@@ -260,6 +307,8 @@ def pull(conn, url, token, write_lock):
         for rem in res.get('rows') or []:
             if apply_appt(conn, rem):
                 n += 1
+        if n:
+            dedupe(conn)
         meta_set(conn, 'sync_cursor', int(float(res.get('cursor') or since)))
         conn.commit()
     if done:

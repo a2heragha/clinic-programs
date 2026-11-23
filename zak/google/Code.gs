@@ -369,7 +369,13 @@ function apiSaveAppt(tok, a) {
   try {
     const sh = sh_('appointments');
     const all = readAll_(sh, A_COLS);
-    const ex = a.uid ? all.find(o => o.uid === a.uid) : null;
+    let ex = a.uid ? all.find(o => o.uid === a.uid) : null;
+    if (!ex && a.date && a.hold !== '1') {   // one appointment per patient per day: a second booking updates the first
+      const pid = String(a.patient_id || '').trim(), nm = String(a.name || '').trim();
+      ex = all.find(o => o.date === a.date && o.deleted !== '1' && o.hold !== '1' &&
+        (pid ? String(o.patient_id || '').trim() === pid : (nm && !String(o.patient_id || '').trim() && String(o.name || '').trim() === nm))) || null;
+      if (ex && a.status === '' ) delete a.status;   // never turn an arrived patient back into "booked"
+    }
     if (u.role === 'doctor' && !ex) throw new Error('Read only');
     const o = ex ? Object.assign({}, ex) : { uid: Utilities.getUuid().replace(/-/g, ''), deleted: '0', status: '' };
     if (a.weight !== undefined && a.weight !== '' && !(Number(a.weight) >= 2 && Number(a.weight) <= 300)) throw new Error('الوزن بين 2 و 300 كغم');

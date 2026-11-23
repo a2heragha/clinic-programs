@@ -424,15 +424,22 @@ const EXTRA_TABS = {
   ai(pane, card) {
     const m = L.meta;
     pane.innerHTML = card('AI features', `
-      <div class="small muted" style="margin-bottom:8px">Two helpers use an Anthropic (Claude) API key: <b>Read lab values</b> from a photo/PDF of a lab sheet (open a file in the patient's Investigation files), and <b>AI summary</b> of all previous visits (patient page → Summary). Without a key everything else works normally.<br>
-        When used, the sheet image or the visit text of that patient is sent to Anthropic over the internet; nothing is sent otherwise.</div>
+      <div class="small muted" style="margin-bottom:8px">These helpers use an Anthropic (Claude) API key: <b>reading lab sheets</b>, the <b>summary</b> before the visit, <b>AI suggestions</b> for today, and <b>✨ Fill with AI</b> in the referral, medical report, echo request and lab request. Without a key everything else works normally.<br>
+        When used, the sheet image or the file of that patient is sent to Anthropic over the internet; nothing is sent otherwise.</div>
       <div class="row"><label class="grow">API key<input id="aiK" type="password" data-lang="en" autocomplete="off" placeholder="${m.ai_has_key ? 'Saved — type only to replace it' : 'sk-ant-…  (get it from console.anthropic.com)'}"></label></div>
-      ${aiModelPick('ocr', 'Reading lab sheets (photo / PDF)', m.ai_model_ocr || m.ai_model || AI_DEF)}
-      ${aiModelPick('sum', 'Summary of previous visits', m.ai_model_sum || m.ai_model || AI_DEF)}
-      ${aiModelPick('plan', 'Suggestions for today (questions, exam, differential, tests, medicines)', m.ai_model_plan || 'claude-sonnet-5-5')}
-      <div class="small muted" style="margin-top:6px">Prices are approximate (US dollars, Anthropic list prices). *Per month = about 300 lab sheets / summaries / suggestions; a saved summary is reused for free until the file changes.</div>
-      <div class="actions"><button class="primary" id="aiSave">Save</button><button id="aiTest">Test the key</button>${m.ai_has_key ? '<button class="danger" id="aiDel">Remove key</button>' : ''}<span id="aiSt" class="small" style="margin-left:8px">${m.ai_has_key ? '<span style="color:var(--ok)">● key saved</span>' : '<span class="muted">no key yet</span>'}</span></div>`, ' style="max-width:820px"');
-    $('#aiSave').onclick = async () => { const b = { ai_model: '', ai_model_ocr: ($('[name=aim_ocr]:checked') || {}).value || AI_DEF, ai_model_sum: ($('[name=aim_sum]:checked') || {}).value || AI_DEF, ai_model_plan: ($('[name=aim_plan]:checked') || {}).value || 'claude-sonnet-5-5' }; if ($('#aiK').value.trim()) b.ai_key = $('#aiK').value.replace(/\s+/g, ''); await api('PUT', '/api/meta', b); await loadLists(); toast('Saved'); showSetTab('ai'); };
+      <div class="lbl" style="margin-top:12px">Each AI service: the model, and your own instructions (prompt)</div>
+      <div class="small muted" style="margin-bottom:6px">Your instructions are added after the program's own instructions and <b>win over them</b>: what to focus on, what to leave out, length, order, headings, style, language… The patient data is always sent with them.</div>
+      <table class="tbl aisvc">${AI_SVC.map(([k, t, def, hint]) => `<tr><td style="width:190px;vertical-align:top"><b>${t}</b>
+          <select data-aim="${k}" style="width:100%;margin-top:4px">${AI_MODELS.map(([id, n]) => `<option value="${id}"${id === (m['ai_model_' + k] || (k === 'ocr' || k === 'sum' ? m.ai_model : '') || def) ? ' selected' : ''}>${n}</option>`).join('')}</select></td>
+        <td><textarea data-aip="${k}" rows="3" dir="auto" style="width:100%" placeholder="${esc(hint)}">${esc(m['ai_prompt_' + k] || '')}</textarea></td></tr>`).join('')}</table>
+      <div class="small muted" style="margin-top:6px">Models: ${AI_MODELS.map(([, n, note]) => `<b>${n}</b> — ${note}`).join(' · ')}. Haiku costs about 1/20 of Sonnet; Opus about twice Sonnet.</div>
+      <div class="actions"><button class="primary" id="aiSave">Save</button><button id="aiTest">Test the key</button>${m.ai_has_key ? '<button class="danger" id="aiDel">Remove key</button>' : ''}<span id="aiSt" class="small" style="margin-left:8px">${m.ai_has_key ? '<span style="color:var(--ok)">● key saved</span>' : '<span class="muted">no key yet</span>'}</span></div>`, ' style="max-width:980px"');
+    $('#aiSave').onclick = async () => {
+      const b = { ai_model: '' };
+      $$('[data-aim]', pane).forEach(x => b['ai_model_' + x.dataset.aim] = x.value);
+      $$('[data-aip]', pane).forEach(x => b['ai_prompt_' + x.dataset.aip] = x.value.trim());
+      if ($('#aiK').value.trim()) b.ai_key = $('#aiK').value.replace(/\s+/g, '');
+      await api('PUT', '/api/meta', b); await loadLists(); toast('Saved'); showSetTab('ai'); };
     $('#aiTest').onclick = async () => { $('#aiSt').innerHTML = '<span class="muted">testing…</span>';
       const k = $('#aiK').value.replace(/\s+/g, '');     // a key typed/pasted but not saved yet is saved first, then tested
       if (k) { if (!/^sk-ant-/.test(k)) { $('#aiSt').innerHTML = '<span style="color:var(--warn)">● the key must start with sk-ant-</span>'; return; } await api('PUT', '/api/meta', { ai_key: k }); await loadLists(); }
@@ -587,6 +594,15 @@ CALCS.forEach(c => c.ic = c.ic || CALC_ICON[c.id] || 'calc');
 
 /* ============================================================ AI model choice with prices */
 const AI_DEF = 'claude-haiku-5-5';
+const AI_SVC = [   // [key, service, default model, example instructions]
+  ['ocr', 'Reading lab sheets (photo / PDF)', 'claude-haiku-5-5', 'e.g. The lab "Al-Hayat" writes HbA1c in mmol/mol — convert to %. Ignore the reference ranges.'],
+  ['sum', 'Summary before this visit', 'claude-haiku-5-5', 'e.g. Max 80 words. Bullet points. Start with active problems and their control; then medicines changed in the last 3 visits; skip normal results.'],
+  ['plan', 'AI suggestions for today', 'claude-sonnet-5-5', 'e.g. Focus on diabetes and kidney protection; give at most 3 tests; prefer drugs available in Mosul pharmacies; no lifestyle advice.'],
+  ['ref', 'Referral letter', 'claude-sonnet-5-5', 'e.g. Short and formal. Always state the eGFR and the last HbA1c. End with my phone number for contact.'],
+  ['rep', 'Medical report (case report)', 'claude-sonnet-5-5', 'e.g. For employer / court: diagnoses and dates only, no lab values, no prognosis.'],
+  ['echo', 'Echo request', 'claude-sonnet-5-5', 'e.g. One line indication, then the questions for the echo doctor as a numbered list.'],
+  ['lab', 'Lab request (suggested tests)', 'claude-haiku-5-5', 'e.g. Use the names of our lab sheet; no tests done in the last 3 months unless abnormal.'],
+];
 const AI_MODELS = [   // [id, name, note, per lab sheet, per summary, month of 300 sheets, month of 300 summaries, per suggestion, month of 300 suggestions]
   ['claude-haiku-5-5', 'Claude Haiku 5.5', 'Fast and cheapest — reads printed lab sheets well', '≈ $0.0005', '≈ $0.001', '≈ $0.15', '≈ $0.30', '≈ $0.002', '≈ $0.6'],
   ['claude-sonnet-5-5', 'Claude Sonnet 5.5', 'More accurate; better clinical reasoning (recommended for suggestions)', '≈ $0.01', '≈ $0.025', '≈ $3', '≈ $7.5', '≈ $0.03', '≈ $9'],

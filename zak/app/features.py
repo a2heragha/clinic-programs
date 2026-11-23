@@ -370,7 +370,7 @@ def parse_json(txt, key=None, model=None):
     raise RuntimeError('The AI answer could not be read — try again')
 
 
-def ai_read_labs(key, model, data, mime, tests):
+def ai_read_labs(key, model, data, mime, tests, extra=''):
     codes = '\n'.join('%s = %s (%s)' % (t['code'], t['name'], t['unit'] or '') for t in tests)
     block = ({'type': 'document', 'source': {'type': 'base64', 'media_type': 'application/pdf', 'data': base64.b64encode(data).decode()}}
              if mime == 'application/pdf' else
@@ -380,7 +380,7 @@ def ai_read_labs(key, model, data, mime, tests):
               '\n\nConvert to the unit shown when the report uses another unit (e.g. creatinine µmol/L ÷ 88.4 → mg/dL, glucose mmol/L × 18 → mg/dL, '
               'cholesterol mmol/L × 38.67, TG mmol/L × 88.57, urea mmol/L × 6.006, Hb g/L ÷ 10). '
               'Give the answer with the answer tool: {"date":"YYYY-MM-DD or null","items":[{"code":"CODE","value":number,"as_written":"text on the sheet"}],'
-              '"other":["results that have no code, as written"]}')
+              '"other":["results that have no code, as written"]}') + doctor_says(extra)
     schema = {'type': 'object', 'properties': {
         'date': {'type': ['string', 'null'], 'description': 'YYYY-MM-DD or null'},
         'items': {'type': 'array', 'items': {'type': 'object', 'properties': {'code': {'type': 'string'}, 'value': {'type': 'number'}, 'as_written': {'type': 'string'}},
@@ -396,7 +396,20 @@ def ai_summary(key, model, pdata, prompt=None):
     return ai_call(key, model, prompt or summary_prompt(pdata), 900, system='You are assisting an internal-medicine physician. Be factual; only use the data given.')
 
 
-def summary_prompt(pdata):
+def summary_prompt(pdata, extra=''):
+    return patient_context(pdata) + '\n\nWrite a concise clinical summary for the treating internist before today\'s visit, in English, max 180 words: ' \
+        'main problems with course and control, current treatment and recent changes, important trends in labs/BP, ' \
+        'and pending items (tests due, plans not yet done). Plain text, short paragraphs, no headings, no advice to see a doctor.' + doctor_says(extra)
+
+
+def doctor_says(extra):
+    """the doctor's own instructions for this service (Settings → AI features); they come last and win over the defaults"""
+    extra = (extra or '').strip()
+    return ('\n\nINSTRUCTIONS FROM THE DOCTOR (follow them; where they differ from the instructions above, the doctor\'s win; '
+            'never invent data that is not given):\n' + extra[:4000]) if extra else ''
+
+
+def patient_context(pdata):
     p = pdata['patient']
     lines = ['Patient: %s, %s, age %s. Smoking: %s.' % (p.get('gender') or '?', p.get('occupation') or '', p.get('age'), p.get('smoking') or '?'),
              'Chronic: ' + (p.get('chronic') or '').replace('\n', '; '), 'Allergies: ' + (p.get('allergies') or 'none recorded').replace('\n', '; '),
@@ -418,16 +431,13 @@ def summary_prompt(pdata):
         if l.get('value') is not None:
             labs.setdefault(l['code'], []).append('%s %s' % (l['date'][:7], l['value']))
     lines.append('Labs: ' + '; '.join('%s: %s' % (k, ', '.join(v[-5:])) for k, v in labs.items()))
-    prompt = ('\n'.join(lines) + '\n\nWrite a concise clinical summary for the treating internist before today\'s visit, in English, max 180 words: '
-              'main problems with course and control, current treatment and recent changes, important trends in labs/BP, '
-              'and pending items (tests due, plans not yet done). Plain text, short paragraphs, no headings, no advice to see a doctor.')
-    return prompt
+    return '\n'.join(lines)
 
 
 PLAN_MODEL = 'claude-sonnet-5-5'
 
 
-def ai_plan(key, model, pdata, visit, family=None):
+def ai_plan(key, model, pdata, visit, family=None, extra=''):
     """Suggestions for today's visit (questions, exam, differential, tests, medicines) from the history + what is typed now."""
     p = pdata['patient']
     L = ['PATIENT: %s, age %s, %s. Smoking: %s. Height %s cm.' % (p.get('gender') or '?', p.get('age'), p.get('occupation') or '', p.get('smoking') or '?', p.get('height') or '?'),
@@ -485,7 +495,7 @@ def ai_plan(key, model, pdata, visit, family=None):
               '"meds":[{"action":"start|continue|adjust|stop","line":"prescription line: DRUG form strength + dose/frequency","why":"reason"}],'
               '"plan":["short plan / advice items"],'
               '"follow_up_days":number or null}\n'
-              'Max 6 items per list, most important first.')
+              'Max 6 items per list, most important first.') + doctor_says(extra)
     schema = {'type': 'object', 'properties': {
         'focus': {'type': 'string'}, 'red_flags': {'type': 'array', 'items': {'type': 'string'}}, 'questions': {'type': 'array', 'items': {'type': 'string'}}, 'exam': {'type': 'array', 'items': {'type': 'string'}},
         'ddx': {'type': 'array', 'items': {'type': 'object', 'properties': {'dx': {'type': 'string'}, 'for': {'type': 'string'}, 'against': {'type': 'string'}}, 'required': ['dx']}},
@@ -500,3 +510,53 @@ def ai_plan(key, model, pdata, visit, family=None):
         if not isinstance(out.get(k), list):
             out[k] = []
     return out
+
+
+# ------------------------------------------------------------------ letters filled by AI (referral, medical report, echo request, lab request)
+DOC_TASK = {
+    'ref': ('a referral letter from the treating internist to a colleague', 'Start with a greeting to the colleague, then: who the patient is, '
+            'the presenting problem, relevant background, examination / vital signs, key results, current treatment, allergies, '
+            'and a clear "reason for referral" with the specific question. End with thanks. 120–220 words.'),
+    'rep': ('a medical report "to whom it may concern", given at the patient\'s request', 'Factual: since when the patient is followed in the clinic, '
+            'the diagnoses, the course, current medications as a numbered list, and recommendations if any. No speculation. 100–200 words.'),
+    'echo': ('a request for transthoracic echocardiography', 'Brief: patient, indication (symptoms, findings, diagnoses that justify the echo), '
+             'relevant background and medicines, then the specific questions for the echo doctor (e.g. LV size and EF, diastolic function, LVH, '
+             'valves, pulmonary pressure, pericardium) adapted to this patient. 60–140 words.'),
+}
+
+
+def visit_context(visit):
+    cur = ['TODAY\'S VISIT (%s)' % (visit.get('date') or '')]
+    for k, lab in (('bp_sys', 'BP sys'), ('bp_dia', 'BP dia'), ('hr', 'Pulse'), ('temp', 'Temp'), ('spo2', 'SpO2'), ('rbs', 'RBS'), ('weight', 'Weight kg')):
+        if visit.get(k) not in (None, ''):
+            cur.append('%s %s' % (lab, visit[k]))
+    for k, lab in (('complaint', 'Complaint'), ('exam', 'Exam'), ('diagnosis', 'Diagnosis'), ('plan', 'Plan'), ('imaging', 'Imaging')):
+        if (visit.get(k) or '').strip():
+            cur.append('%s: %s' % (lab, visit[k].strip().replace('\n', '; ')))
+    if visit.get('meds'):
+        cur.append('Medicines written today: ' + '; '.join(visit['meds']))
+    return ' | '.join(cur)
+
+
+def ai_doc(key, model, pdata, visit, kind, lang='en', to='', extra=''):
+    """the text of a letter (ref / rep / echo) for the physician to edit, or the tests of a lab request (lab)"""
+    p = pdata['patient']
+    ctx = patient_context(pdata) + '\n' + visit_context(visit) + '\nPatient name: %s. Sex: %s.' % (p.get('name') or '', p.get('gender') or '?')
+    sysm = 'You write clinical documents for an internist in Mosul, Iraq. Use only the data given; leave a clear blank "…" where something needed is missing.'
+    if kind == 'lab':
+        prompt = (ctx + '\n\nSuggest the laboratory tests to request today for this patient (monitoring of the known problems, today\'s complaint, '
+                  'medicine safety such as renal function / potassium / LFT, and tests that are due). Short names as written on a lab request '
+                  '(e.g. "CBC", "HbA1c", "S. creatinine", "Lipid profile"). Max 12, most important first. Give the answer with the answer tool.' + doctor_says(extra))
+        schema = {'type': 'object', 'properties': {'tests': {'type': 'array', 'items': {'type': 'object', 'properties': {
+            'test': {'type': 'string'}, 'why': {'type': 'string'}}, 'required': ['test']}}, 'clinical_info': {'type': 'string'}}, 'required': ['tests']}
+        out = ai_tool(key, model or DEFAULT_MODEL, prompt, schema, 1500, system=sysm)
+        out['tests'] = [t for t in out.get('tests') or [] if isinstance(t, dict) and (t.get('test') or '').strip()][:15]
+        return out
+    if kind not in DOC_TASK:
+        raise RuntimeError('Unknown document')
+    what, how = DOC_TASK[kind]
+    language = ('Arabic (formal Iraqi medical style; keep drug names, test names and diagnoses in English inside the Arabic text)'
+                if lang == 'ar' else 'English')
+    prompt = (ctx + '\n\nWrite %s, in %s. %s%s Do not write the clinic header, the date or the signature — they are printed by the program. '
+              'Plain text only (no markdown), ready to print.' % (what, language, how, (' Addressed to: %s.' % to) if to else '')) + doctor_says(extra)
+    return {'text': ai_call(key, model or DEFAULT_MODEL, prompt, 1500, system=sysm).strip()}

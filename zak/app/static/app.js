@@ -1014,6 +1014,21 @@ function addLabsDialog(date) {
     let tm; i.addEventListener('input', () => { clearTimeout(tm); TM[c] = () => { clearTimeout(tm); commit(); }; tm = setTimeout(commit, 900); });
     i.addEventListener('change', () => { clearTimeout(tm); commit(); place(i); });
   });
+  // bilirubin: total = direct + indirect — the missing one is calculated (it stays editable)
+  const BIL = ['TBIL', 'DBIL', 'IBIL'], bil = c => $(`#mbox [data-c="${c}"]`), autoB = {};
+  if (BIL.every(bil)) BIL.forEach(c => bil(c).addEventListener('change', () => {
+    if (autoB[c] && bil(c).dataset.auto !== bil(c).value) delete autoB[c];       // typed by hand: no longer calculated
+    const n = k => { const v = parseFloat(String(bil(k).value).replace(',', '.')); return isFinite(v) ? v : null; };
+    const t = n('TBIL'), d = n('DBIL'), i = n('IBIL');
+    const want = t != null && d != null && (i == null || autoB.IBIL) ? ['IBIL', t - d]
+      : d != null && i != null && (t == null || autoB.TBIL) ? ['TBIL', d + i]
+      : t != null && i != null && (d == null || autoB.DBIL) ? ['DBIL', t - i] : null;
+    if (!want || want[0] === c) return;
+    const [k, v] = want, el = bil(k), val = String(Math.round(Math.max(v, 0) * 100) / 100);
+    if (el.value === val) return;
+    el.value = val; el.dataset.auto = val; autoB[k] = true;
+    el.dispatchEvent(new Event('change'));
+  }));
   $('#lDate').addEventListener('change', () => { const d = D = $('#lDate').value; Object.entries(saved).forEach(([c, id]) => enqueue(() => api('PUT', '/api/lab/' + id, { date: d }))); changed = true; });
   const othRow = () => {
     const tr = document.createElement('tr');
@@ -1257,7 +1272,8 @@ function labRequestDialog(pre) {
     <div class="small" style="margin-top:6px">Panels: ${[['Diabetes', ['FBS', 'HbA1c', 'S. creatinine', 'Urine albumin/creatinine ratio', 'Lipid profile']], ['Check-up', ['CBC', 'FBS', 'HbA1c', 'Lipid profile', 'Blood urea', 'S. creatinine', 'Liver function tests', 'TSH', 'Vitamin D', 'GUE']], ['Anaemia', ['CBC', 'Ferritin', 'Serum iron / TIBC', 'Vitamin B12']], ['Thyroid', ['TSH', 'Free T4']]]
       .map(([n, t]) => `<button class="small" data-panel="${esc(JSON.stringify(t))}">${n}</button>`).join(' ')}</div>
     <label class="small" style="display:flex;gap:6px;margin-top:8px"><input type="checkbox" id="lrDx" checked> Print the clinical information (diagnosis)</label>
-    <div class="foot"><button data-close>Cancel</button><button class="primary" id="lrPrint">🖨 Print</button></div>`);
+    <div id="lrWhy" class="small muted" style="margin-top:6px"></div>
+    <div class="foot"><button id="lrAi" title="Suggests the tests from the file and today's visit — Settings → AI features for the model and your instructions">✨ Suggest with AI</button><span class="sp"></span><button data-close>Cancel</button><button class="primary" id="lrPrint">🖨 Print</button></div>`);
   const rows = list => {
     const box = $('#lrList');
     box.innerHTML = list.concat(['']).map((m, i) => `<div class="m"><span class="n">${i + 1}.</span><input value="${esc(m)}" data-lang="en" autocomplete="off"><button class="small danger" data-x="${i}">✕</button></div>`).join('');
@@ -1272,6 +1288,11 @@ function labRequestDialog(pre) {
   const grow = i => { const ins = $$('#lrList input'); if (i === ins.length - 1 && ins[i].value.trim()) { const v = ins[i].value; rows(vals()); const el = $$('#lrList input')[i]; el.focus(); el.value = v; el.setSelectionRange(v.length, v.length); } };
   rows(Array.isArray(pre) ? pre : []); $('#lrList input').focus();
   $$('[data-panel]').forEach(b => b.onclick = () => { const cur = vals(); JSON.parse(b.dataset.panel).forEach(t => { if (!cur.includes(t)) cur.push(t); }); rows(cur); });
+  $('#lrAi').onclick = async () => {
+    const r = await aiDocFill('lab', $('#lrAi')); if (!r) return;
+    const cur = vals(); (r.tests || []).forEach(t => { if (!cur.some(c => c.toLowerCase() === t.test.trim().toLowerCase())) cur.push(t.test.trim()); }); rows(cur);
+    $('#lrWhy').innerHTML = (r.tests || []).filter(t => t.why).map(t => `<b>${esc(t.test)}</b>: ${esc(t.why)}`).join(' · ');
+  };
   $('#lrPrint').onclick = async () => {
     await saveVisitNow();
     const x = curVisit(), sel = vals();
@@ -1292,13 +1313,26 @@ function visitFacts() {
     chronic: (p.chronic || '').split('\n').map(s => s.trim()).filter(Boolean).join(', '), allergy: (p.allergies || '').split('\n').map(s => s.trim()).filter(Boolean).join(', '),
     vit: x.bp_sys ? `BP ${x.bp_sys}/${x.bp_dia || ''}${x.hr ? ', PR ' + x.hr : ''}${x.spo2 ? ', SpO2 ' + x.spo2 + '%' : ''}` : '', labs: labs.join(', '), meds: currentMeds() };
 }
+// AI fills a document (Settings → AI features: model + the doctor's own instructions per document)
+async function aiDocFill(kind, btn, extra = {}) {
+  if (typeof needKey === 'function' && needKey()) return null;
+  await saveVisitNow();
+  const root = $('#vedit'), x = curVisit();
+  const f = k => { const el = root && $(`[data-k=${k}]`, root); return el ? el.value : (x[k] || ''); };
+  const body = Object.assign({ kind, patient_id: P.patient.id, visit_id: x.id, date: x.date, meds: currentMeds() }, extra);
+  ['complaint', 'exam', 'diagnosis', 'plan', 'imaging', 'bp_sys', 'bp_dia', 'hr', 'temp', 'spo2', 'rbs', 'weight'].forEach(k => body[k] = f(k));
+  const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '⏳ AI is writing… (10–30 s)';
+  try { return await api('POST', '/api/ai_doc', body); }
+  catch (e) { toast(e.message, true); return null; }
+  finally { btn.disabled = false; btn.innerHTML = old; }
+}
 // referral + echo request: Arabic or English letter, editable before printing
 function letterDialog(kind) {
   const titles = { ref: ['Referral letter', 'إحالة', 'Referral'], echo: ['Echo request', 'طلب فحص إيكو القلب', 'Echocardiography request'] };
   const close = modal(`<h2>${titles[kind][0]}<span class="sp"></span><select id="lgL"><option value="ar">العربية</option><option value="en">English</option></select><button data-close>✕</button></h2>
     <div class="row"><label class="grow">${kind === 'echo' ? 'To (echo centre / doctor) — optional' : 'To (doctor / department / hospital)'}<input id="lgTo" dir="auto" data-lang="en"></label></div>
     <label class="small muted" style="display:block;margin-top:8px">Letter (edit freely)<textarea id="lgT" rows="13"></textarea></label>
-    <div class="foot"><button data-close>Cancel</button><button class="primary" id="lgP">🖨 Print</button></div>`);
+    <div class="foot"><button id="lgAi" title="Writes the letter from the file and today's visit — Settings → AI features for the model and your instructions">✨ Fill with AI</button><span class="sp"></span><button data-close>Cancel</button><button class="primary" id="lgP">🖨 Print</button></div>`);
   const fill = () => {
     const ar = $('#lgL').value === 'ar', f = visitFacts(), g = arG(f.p), [, his, mr] = he(f.p), t = $('#lgT');
     t.dir = ar ? 'rtl' : 'ltr'; t.dataset.lang = ar ? 'ar' : 'en'; $('#lgTo').dataset.lang = ar ? 'ar' : 'en'; $('#lgTo').dir = ar ? 'rtl' : 'auto';
@@ -1310,6 +1344,10 @@ function letterDialog(kind) {
       : `Kindly perform a transthoracic echocardiography for ${mr} ${f.p.name}, ${f.age != null ? f.age + ' years old' : ''}.\n\n${f.dx ? 'Diagnosis: ' + f.dx + '\n' : ''}${f.chronic ? 'Background: ' + f.chronic + '\n' : ''}${f.cc ? 'Symptoms: ' + f.cc + '\n' : ''}${f.vit ? f.vit + '\n' : ''}\nPlease assess: LV size and systolic function (EF), diastolic function, LVH, valves, pulmonary artery pressure, pericardium.\n\nThank you.`;
   };
   fill(); $('#lgL').onchange = fill;
+  $('#lgAi').onclick = async () => {
+    const r = await aiDocFill(kind, $('#lgAi'), { lang: $('#lgL').value, to: $('#lgTo').value.trim() });
+    if (r && r.text) $('#lgT').value = r.text;
+  };
   $('#lgP').onclick = async () => {
     await saveVisitNow();
     const ar = $('#lgL').value === 'ar', to = $('#lgTo').value.trim(), dir = ar ? 'rtl' : 'ltr', al = ar ? 'right' : 'left';
@@ -1329,9 +1367,10 @@ function reportText(lang) {
 }
 function reportDialog() {
   const close = modal(`<h2>Medical report<span class="sp"></span><select id="rl"><option value="ar">العربية</option><option value="en">English</option></select><button data-close>✕</button></h2>
-    <textarea id="rt" rows="14"></textarea><div class="foot"><button data-close>Cancel</button><button class="primary" id="rp">🖨 Print</button></div>`);
+    <textarea id="rt" rows="14"></textarea><div class="foot"><button id="rAi" title="Writes the report from the whole file — Settings → AI features for the model and your instructions">✨ Fill with AI</button><span class="sp"></span><button data-close>Cancel</button><button class="primary" id="rp">🖨 Print</button></div>`);
   const fill = () => { const ar = $('#rl').value === 'ar'; $('#rt').value = reportText($('#rl').value); $('#rt').dir = ar ? 'rtl' : 'ltr'; $('#rt').dataset.lang = ar ? 'ar' : 'en'; };
   fill(); $('#rl').onchange = fill;
+  $('#rAi').onclick = async () => { const r = await aiDocFill('rep', $('#rAi'), { lang: $('#rl').value }); if (r && r.text) $('#rt').value = r.text; };
   $('#rp').onclick = () => { const ar = $('#rl').value === 'ar', dir = ar ? 'rtl' : 'ltr', al = ar ? 'right' : 'left';
     printDoc(curVisit().date, `<h1>${ar ? 'تقرير طبي' : 'Medical Report'}</h1><p dir="${dir}" style="text-align:${al}">${esc($('#rt').value)}</p>${sig(ar)}`); close(); };
 }

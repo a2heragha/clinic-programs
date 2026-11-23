@@ -526,6 +526,16 @@ def save_appt(conn, aid, b, user):
                 v = s(v)
             f[k] = v
     old_w = conn.execute('SELECT weight FROM appointments WHERE id=?', (aid,)).fetchone()[0] if aid is not None and 'weight' in f else None
+    cur = conn.execute('SELECT * FROM appointments WHERE id=?', (aid,)).fetchone() if aid is not None else None
+    d0 = f.get('date') or (cur['date'] if cur else today())
+    pid0 = f['patient_id'] if 'patient_id' in f else (cur['patient_id'] if cur else None)
+    nm0 = f['name'] if 'name' in f else (cur['name'] if cur else '')
+    hold0 = f['hold'] if 'hold' in f else (cur['hold'] if cur else 0)
+    if not hold0 and not f.get('deleted') and (aid is None or {'date', 'patient_id', 'name', 'hold'} & set(f)):
+        dup = cloudsync.dup_of(conn, d0, pid0, nm0, exclude=aid)
+        if dup:
+            raise ApiError('This patient already has an appointment on %s (%s). One appointment per patient per day.'
+                           % (d0, (dup['time'] or 'no time')))
     if aid is None:
         d = f.get('date') or today()
         seq = conn.execute('SELECT COALESCE(MAX(seq),0)+1 FROM appointments WHERE date=?', (d,)).fetchone()[0]
@@ -627,7 +637,7 @@ def lists(conn, user):
 
 
 META_KEYS = ['clinic_name', 'doctor_name', 'doctor_degree', 'clinic_address', 'clinic_phone', 'visit_price',
-             'work_from', 'work_to', 'review_days', 'review_price', 'labreq_seeded', 'rx_layout_pre', 'rx_layout_plain', 'ai_key', 'ai_model', 'ai_model_ocr', 'ai_model_sum', 'ai_model_plan', 'theme', 'wa_template', 'hdr_title', 'hdr_name', 'hdr_degree_en', 'hdr_lines', 'hdr_reg', 'hdr_phones', 'hdr_address',
+             'work_from', 'work_to', 'review_days', 'review_price', 'labreq_seeded', 'rx_layout_pre', 'rx_layout_plain', 'ai_key', 'ai_model', 'ai_model_ocr', 'ai_model_sum', 'ai_model_plan', 'ai_model_ref', 'ai_model_rep', 'ai_model_echo', 'ai_model_lab', 'ai_prompt_ocr', 'ai_prompt_sum', 'ai_prompt_plan', 'ai_prompt_ref', 'ai_prompt_rep', 'ai_prompt_echo', 'ai_prompt_lab', 'theme', 'wa_template', 'hdr_title', 'hdr_name', 'hdr_degree_en', 'hdr_lines', 'hdr_reg', 'hdr_phones', 'hdr_address',
              'rx_header', 'rx_line_mm', 'rx_top_mm', 'rx_bottom_mm', 'rx_side_mm', 'rx_off_x', 'rx_off_y', 'rx_font_pt']
 
 
@@ -738,7 +748,7 @@ class Handler(BaseHTTPRequestHandler):
                 if p0 == 'errors' and method == 'GET':
                     return self._send(200, {'pc': errlog.PC, 'ver': errlog.VER, 'rows': errlog.recent(int(qs.get('n') or 300)),
                                             'state': {k: (v or {}).get('error') for k, v in (('sync', cloudsync.STATE), ('handoff', handoff.STATE), ('update', updater.STATE), ('backup', BACKUP_STATE))}})
-                if handoff.STATE['readonly'] and method != 'GET' and p0 not in ('login', 'logout', 'shutdown') and p0 not in ('ai_ocr', 'ai_summary', 'ai_test', 'ai_plan'):
+                if handoff.STATE['readonly'] and method != 'GET' and p0 not in ('login', 'logout', 'shutdown') and p0 not in ('ai_ocr', 'ai_summary', 'ai_test', 'ai_plan', 'ai_doc'):
                     raise ApiError('البرنامج انتقل إلى الحاسبة %s — هذه الحاسبة للقراءة فقط. أعد تشغيل البرنامج هنا لاستلامه. '
                                    '(The program moved to another PC — read-only here.)' % (handoff.STATE.get('other') or 'الأخرى'), 423)
                 if p0 == 'shutdown' and method == 'POST':
@@ -751,7 +761,7 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         threading.Thread(target=shutdown_now, args=(3 if ok else 10,), daemon=True).start()
                         res = {'ok': True, 'uploaded': ok, 'handoff': handoff.STATE['enabled']}
-                elif p0 in ('restore', 'ai_ocr', 'ai_summary', 'ai_test', 'ai_plan') and method == 'POST':
+                elif p0 in ('restore', 'ai_ocr', 'ai_summary', 'ai_test', 'ai_plan', 'ai_doc') and method == 'POST':
                     res = self._special(conn, p0, body, user)
                 elif method == 'GET':
                     res = self._get(conn, parts, qs, user)
@@ -804,7 +814,7 @@ class Handler(BaseHTTPRequestHandler):
                 with open(full, 'rb') as fh:
                     data = fh.read()
                 tests = [dict(t) for t in conn.execute('SELECT code, name, unit FROM lab_tests WHERE code != "EGFR"')]
-                out = features.ai_read_labs(m.get('ai_key'), m.get('ai_model_ocr') or m.get('ai_model'), data, r['mime'], tests)
+                out = features.ai_read_labs(m.get('ai_key'), m.get('ai_model_ocr') or m.get('ai_model'), data, r['mime'], tests, m.get('ai_prompt_ocr'))
                 out['file_date'] = r['date']
                 return out
             if p0 == 'ai_test':
@@ -817,13 +827,26 @@ class Handler(BaseHTTPRequestHandler):
                     raise ApiError('Patient not found', 404)
                 v = dict(next((x for x in d['visits'] if x['id'] == int(b.get('visit_id') or 0)), {}))
                 v.update({k: b[k] for k in ('complaint', 'exam', 'diagnosis', 'plan', 'imaging', 'bp_sys', 'bp_dia', 'hr', 'temp', 'spo2', 'rbs', 'weight', 'waist', 'meds') if k in b})
-                return features.ai_plan(m.get('ai_key'), m.get('ai_model_plan') or features.PLAN_MODEL, d, v, d.get('family'))
+                return features.ai_plan(m.get('ai_key'), m.get('ai_model_plan') or features.PLAN_MODEL, d, v, d.get('family'), m.get('ai_prompt_plan'))
+            if p0 == 'ai_doc':
+                if user['role'] != 'doctor':
+                    raise ApiError('Doctor only', 403)
+                kind = b.get('kind') or ''
+                if kind not in ('ref', 'rep', 'echo', 'lab'):
+                    raise ApiError('Unknown document')
+                d = patient_full(conn, int(b.get('patient_id') or 0), user)
+                if not d:
+                    raise ApiError('Patient not found', 404)
+                v = dict(next((x for x in d['visits'] if x['id'] == int(b.get('visit_id') or 0)), {}))
+                v.update({k: b[k] for k in ('date', 'complaint', 'exam', 'diagnosis', 'plan', 'imaging', 'bp_sys', 'bp_dia', 'hr', 'temp', 'spo2', 'rbs', 'weight', 'meds') if k in b})
+                return features.ai_doc(m.get('ai_key'), m.get('ai_model_' + kind) or (features.DEFAULT_MODEL if kind == 'lab' else features.PLAN_MODEL), d, v, kind,
+                                       'ar' if b.get('lang') == 'ar' else 'en', (b.get('to') or '').strip()[:200], m.get('ai_prompt_' + kind))
             if p0 == 'ai_summary':
                 d = patient_full(conn, int(b.get('patient_id') or 0), user)
                 if not d:
                     raise ApiError('Patient not found', 404)
                 # the summary is kept and reused until the file changes (new visit, lab, medicine …) — no second payment for the same data
-                prompt = features.summary_prompt(d)
+                prompt = features.summary_prompt(d, m.get('ai_prompt_sum'))
                 h = hashlib.md5(((m.get('ai_model_sum') or m.get('ai_model') or features.DEFAULT_MODEL) + prompt).encode('utf-8')).hexdigest()
                 pid = d['patient']['id']
                 old = conn.execute('SELECT h, text, at FROM ai_summaries WHERE patient_id=?', (pid,)).fetchone()
@@ -1336,6 +1359,14 @@ def main():
             print(' Imported', name, st)
     except Exception as e:
         print(' Import of app/incoming failed:', e)
+    if handoff.can_sync():  # one appointment per patient per day: older duplicates are removed
+        try:
+            n = cloudsync.dedupe(conn)
+            conn.commit()
+            if n:
+                print(' Duplicate appointments removed:', n)
+        except Exception as e:
+            print(' Duplicate appointments not checked:', e)
     conn.close()
     port = int(CFG['port'])
     try:
