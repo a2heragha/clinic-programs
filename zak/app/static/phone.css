@@ -11,11 +11,13 @@
   /* ---------- top bar: menu button + search + status */
   .top{flex-wrap:wrap;gap:6px;padding:6px 8px}
   #phMenu{display:inline-flex;align-items:center;justify-content:center;width:38px;height:36px;padding:0;font-size:20px;background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.3)}
-  .search-wrap{order:1;flex:1;min-width:0;max-width:none}
+  /* first row: menu + search (full width); second row: the small status signs and the buttons */
+  #phMenu{order:0}
+  .search-wrap{order:1;flex:1 1 calc(100% - 50px);min-width:0;max-width:none}
   #q{font-size:16px;padding:7px 10px}
-  .top .net,#cloud{order:2;margin-left:0!important;margin-right:0!important;font-size:11px;padding:2px 6px}
-  #bkWarn{order:2}
-  .who,#pcOff{order:3;font-size:12px;padding:3px 8px;max-width:130px;overflow:hidden;text-overflow:ellipsis}
+  .top>*:not(#phMenu):not(.search-wrap):not(nav){order:2;margin-left:0!important;margin-right:0!important;font-size:11px!important;padding:2px 7px!important;line-height:1.5;height:auto;min-height:0;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .top .net,#cloud,#bkWarn{border-radius:9px}
+  .who,#pcOff{order:3!important}
   .top nav{display:none;order:9;flex:0 0 100%;flex-direction:column;gap:4px;padding:6px 0 4px}
   body.navopen .top nav{display:flex}
   .top nav button{justify-content:flex-start;font-size:16px;padding:10px 12px}
