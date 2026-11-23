@@ -160,6 +160,8 @@ def init_schema(conn):
     add('visits', 'waist', 'REAL')
     add('visits', 'imaging', 'TEXT')                       # X-ray / US / CT / MRI / echo findings
     add('visits', 'fee_type', "TEXT DEFAULT ''")            # '' paid · review · free
+    add('visits', 'ai_chat', 'TEXT')                       # the doctor's conversation with the AI about this visit (JSON)
+    add('visits', 'ai_plan', 'TEXT')                       # the last "AI suggestions for today" of this visit (JSON)
     add('files', 'seen', 'INTEGER DEFAULT 1')                # 0 = brought by the secretary, not opened by the doctor yet
     add('rx_templates', 'complaint', 'TEXT')
     add('rx_templates', 'exam', 'TEXT')

@@ -502,3 +502,17 @@ html.dark .sv textarea,html.dark .rxcol{background:var(--card)}
 .thumbs .th.new{outline:3px solid #f0b429;position:relative}
 .thumbs .th .newb{position:absolute;top:4px;left:4px;background:#f0b429;color:#fff;font-size:10px;padding:1px 6px;border-radius:6px;z-index:1}
 .appt-new{background:#fff4d6;color:#8a5a00;border-radius:6px;padding:0 5px;font-size:11px;font-weight:700;margin-left:4px}
+
+/* chat with the AI about the patient (side panel) */
+.aichat{position:fixed;top:calc(var(--topH,56px) + 8px);right:10px;bottom:10px;width:440px;max-width:calc(100vw - 20px);background:var(--card,#fff);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);display:flex;flex-direction:column;z-index:900}
+.aichat .ach{display:flex;align-items:center;gap:6px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.aichat .ach .sp{flex:1}
+.aichat .acm{flex:1;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+.aichat .acmsg{padding:8px 10px;border-radius:10px;font-size:13.5px;line-height:1.45;max-width:92%}
+.aichat .acmsg.me{align-self:flex-end;background:var(--accent);color:#fff}
+.aichat .acmsg.ai{align-self:flex-start;background:var(--accent-2,#eef3f8)}
+.aichat .acmsg p{margin:0 0 6px}.aichat .acmsg ul{margin:0 0 6px 18px;padding:0}
+.aichat .acf{border-top:1px solid var(--line);padding:10px;display:flex;flex-direction:column;gap:6px}
+.aichat .acf textarea{width:100%;resize:vertical}
+.aichat .acb{display:flex;gap:6px;flex-wrap:wrap}
+.aibtn.chatbtn{background:linear-gradient(135deg,#0f766e,#14b8a6)!important}

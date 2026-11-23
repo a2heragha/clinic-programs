@@ -296,11 +296,25 @@ async function aiPlan() {
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   let r; try { r = await api('POST', '/api/ai_plan', body); } catch (e) { box.innerHTML = `<div class="aip card" style="color:var(--warn)">${esc(e.message)}</div>`; return; }
   AIP = r;
+  saveAiPlan(r);
+  renderAiPlan(r);
+}
+function saveAiPlan(r) { if (VIS && VIS.id) api('PUT', '/api/visit_ai/' + VIS.id, { ai_plan: r }).then(() => { const v = curVisit(); if (v) v.ai_plan = JSON.stringify(r); }).catch(() => { }); }
+function visitBody() {
+  const root = $('#vedit'), f = k => { const el = root && $(`[data-k=${k}]`, root); return el ? el.value : ''; };
+  const body = { patient_id: P.patient.id, visit_id: VIS.id, meds: currentMeds() };
+  ['complaint', 'exam', 'diagnosis', 'plan', 'imaging', 'bp_sys', 'bp_dia', 'hr', 'temp', 'spo2', 'rbs', 'weight', 'waist'].forEach(k => body[k] = f(k));
+  return body;
+}
+function renderAiPlan(r, saved) {
+  const root = $('#vedit'), box = $('#aiPlanBox'); if (!root || !box || !r) return;
+  AIP = r;
+  ['red_flags', 'questions', 'exam', 'ddx', 'tests', 'meds', 'plan'].forEach(k => { if (!Array.isArray(r[k])) r[k] = []; });
   const add = (kind, i, label = '+') => `<button class="small aiadd" data-ak="${kind}" data-ai="${i}" title="Add to the visit">${label}</button>`;
   const sec = (title, icon, items) => items ? `<div class="aisec"><div class="aist">${ic(icon)} ${title}</div>${items}</div>` : '';
   const li = (kind, arr, fmt) => arr.length ? arr.map((x, i) => `<div class="aili">${add(kind, i)}<div>${fmt(x)}</div></div>`).join('') : '';
   const MA = { start: 'Start', continue: 'Continue', adjust: 'Adjust', stop: 'Stop' };
-  box.innerHTML = `<div class="aip card"><h3>${ic('spark')} AI suggestions for today<span class="sp"></span><button class="small" id="aipRe" style="text-transform:none">↻ Again</button><button class="small" id="aipX" title="Close">✕</button></h3>
+  box.innerHTML = `<div class="aip card"><h3>${ic('spark')} AI suggestions for today${r.from_chat ? ' <small class="muted" style="text-transform:none">— updated from the chat</small>' : ''}<span class="sp"></span><button class="small" id="aipChat" style="text-transform:none">💬 Chat</button><button class="small" id="aipRe" style="text-transform:none">↻ Again</button><button class="small" id="aipX" title="Close">✕</button></h3>
     ${r.focus ? `<div class="aifocus">${esc(r.focus)}</div>` : ''}
     ${r.red_flags.length ? `<div class="aired">${ic('alert')} ${r.red_flags.map(esc).join('<br>')}</div>` : ''}
     <div class="aigrid">
@@ -314,6 +328,7 @@ async function aiPlan() {
     <div class="muted small" style="margin-top:6px">+ adds the item to the visit (questions → S, examination → O, diagnosis → A, investigations / advice → P, medicines → prescription; “Stop” removes the matching medicine). Suggestions only — check every item.</div></div>`;
   $('#aipX').onclick = () => box.innerHTML = '';
   $('#aipRe').onclick = aiPlan;
+  $('#aipChat').onclick = aiChatOpen;
   const lab = $('#aipLab'); if (lab) lab.onclick = () => labRequestDialog(r.tests.map(x => x.test));
   const fu = $('#aipFu'); if (fu) fu.onclick = () => { const el = $('[data-k=follow_up]', root); const x = curVisit(); el.value = addDays((x && x.date) || todayISO(), +r.follow_up_days); visitChanged('follow_up', el.value); fu.disabled = true; toast('Follow-up set — the automatic appointment is made'); };
   box.onclick = e => {
@@ -346,6 +361,63 @@ async function aiPlan() {
   };
 }
 let AIP = null;
+
+/* ============================================================ chat with the AI about this patient → the suggestions box */
+let CHAT = [];
+function aiChatClose() { const d = $('#aiChat'); if (d) d.remove(); }
+function aiChatOpen() {
+  if (needKey()) return;
+  aiChatClose();
+  const v = curVisit(); try { CHAT = v && v.ai_chat ? JSON.parse(v.ai_chat) : []; } catch (e) { CHAT = []; }
+  const d = document.createElement('div'); d.id = 'aiChat'; d.className = 'aichat';
+  d.innerHTML = `<div class="ach"><b>💬 Chat about ${esc(P.patient.name)}</b><span class="sp"></span><button class="small" id="acNew" title="Start a new conversation">New</button><button class="small" id="acX" title="Close">✕</button></div>
+    <div class="acm" id="acM"></div>
+    <div class="acf"><textarea id="acT" rows="3" data-lang="en" dir="auto" placeholder="Ask about this patient… (Enter sends, Shift+Enter new line)"></textarea>
+      <div class="acb"><button class="primary" id="acS">Send</button><button id="acA" title="The suggestions box is changed as agreed in this conversation">⬆️ Update today's suggestions</button></div>
+      <div class="muted small">The AI sees the whole file and what is typed in today's visit. Suggestions only — the decision is yours.</div></div>`;
+  document.body.appendChild(d);
+  const paint = (busy) => {
+    const m = $('#acM');
+    m.innerHTML = (CHAT.length ? '' : '<div class="muted small" style="padding:8px">Examples: “Why not an SGLT2 inhibitor?” · “Her eGFR is 40 — adjust the doses” · “Add a lipid profile and remove the TSH”.</div>') +
+      CHAT.map(x => `<div class="acmsg ${x.role === 'user' ? 'me' : 'ai'}">${x.role === 'user' ? esc(x.content).replace(/\n/g, '<br>') : mdLite(x.content)}</div>`).join('') +
+      (busy ? `<div class="acmsg ai muted">${busy}</div>` : '');
+    m.scrollTop = m.scrollHeight;
+  };
+  const keep = () => { const v = curVisit(); if (v) v.ai_chat = JSON.stringify(CHAT); api('PUT', '/api/visit_ai/' + VIS.id, { ai_chat: CHAT }).catch(() => { }); };
+  const send = async () => {
+    const t = $('#acT').value.trim(); if (!t) return;
+    await saveVisitNow();
+    CHAT.push({ role: 'user', content: t }); $('#acT').value = ''; paint('Thinking…'); $('#acS').disabled = true;
+    try { const r = await api('POST', '/api/ai_chat', Object.assign(visitBody(), { messages: CHAT, plan: AIP })); CHAT.push({ role: 'assistant', content: r.text }); keep(); paint(); }
+    catch (e) { CHAT.pop(); $('#acT').value = t; paint(); toast(e.message, true); }
+    finally { $('#acS').disabled = false; $('#acT').focus(); }
+  };
+  $('#acS').onclick = send;
+  $('#acT').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+  $('#acX').onclick = aiChatClose;
+  $('#acNew').onclick = () => { if (CHAT.length && !confirm('Start a new conversation? This one is deleted.')) return; CHAT = []; keep(); paint(); };
+  $('#acA').onclick = async () => {
+    if (!CHAT.length) return toast('Talk first, then update the suggestions', true);
+    await saveVisitNow();
+    const b = $('#acA'), old = b.innerHTML; b.disabled = true; b.innerHTML = '⏳ Updating the suggestions…';
+    try { const r = await api('POST', '/api/ai_chat_apply', Object.assign(visitBody(), { messages: CHAT, plan: AIP })); r.from_chat = true; saveAiPlan(r); renderAiPlan(r);
+      toast('Today\'s suggestions updated'); $('#aiPlanBox').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+    catch (e) { toast(e.message, true); }
+    finally { b.disabled = false; b.innerHTML = old; }
+  };
+  paint(); $('#acT').focus();
+}
+function mdLite(t) {      // the AI's answer: **bold**, bullet / numbered lines and paragraphs
+  const B = /^\s*([-•*]|\d+[.)])\s+/;
+  return esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split(/\n{2,}/).map(p => {
+    let out = '', ul = false;
+    p.split('\n').forEach(l => {
+      if (B.test(l)) { if (!ul) { out += '<ul>'; ul = true; } out += '<li>' + l.replace(B, '') + '</li>'; }
+      else { if (ul) { out += '</ul>'; ul = false; } out += (out && !out.endsWith('</ul>') ? '<br>' : '') + l; }
+    });
+    return '<p>' + out + (ul ? '</ul>' : '') + '</p>';
+  }).join('');
+}
 
 
 /* ============================================================ several clinic PCs (handoff.py): status bar + Close button */

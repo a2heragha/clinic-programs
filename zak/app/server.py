@@ -639,7 +639,7 @@ def lists(conn, user):
 
 
 META_KEYS = ['clinic_name', 'doctor_name', 'doctor_degree', 'clinic_address', 'clinic_phone', 'visit_price',
-             'work_from', 'work_to', 'review_days', 'review_price', 'labreq_seeded', 'rx_layout_pre', 'rx_layout_plain', 'ai_key', 'ai_model', 'ai_model_ocr', 'ai_model_sum', 'ai_model_plan', 'ai_model_ref', 'ai_model_rep', 'ai_model_echo', 'ai_model_lab', 'ai_prompt_ocr', 'ai_prompt_sum', 'ai_prompt_plan', 'ai_prompt_ref', 'ai_prompt_rep', 'ai_prompt_echo', 'ai_prompt_lab', 'theme', 'wa_template', 'hdr_title', 'hdr_name', 'hdr_degree_en', 'hdr_lines', 'hdr_reg', 'hdr_phones', 'hdr_address',
+             'work_from', 'work_to', 'review_days', 'review_price', 'labreq_seeded', 'rx_layout_pre', 'rx_layout_plain', 'ai_key', 'ai_model', 'ai_model_ocr', 'ai_model_sum', 'ai_model_plan', 'ai_model_ref', 'ai_model_rep', 'ai_model_echo', 'ai_model_lab', 'ai_prompt_ocr', 'ai_prompt_sum', 'ai_prompt_plan', 'ai_prompt_ref', 'ai_prompt_rep', 'ai_prompt_echo', 'ai_prompt_lab', 'ai_model_chat', 'ai_prompt_chat', 'theme', 'wa_template', 'hdr_title', 'hdr_name', 'hdr_degree_en', 'hdr_lines', 'hdr_reg', 'hdr_phones', 'hdr_address',
              'rx_header', 'rx_line_mm', 'rx_top_mm', 'rx_bottom_mm', 'rx_side_mm', 'rx_off_x', 'rx_off_y', 'rx_font_pt']
 
 
@@ -750,7 +750,7 @@ class Handler(BaseHTTPRequestHandler):
                 if p0 == 'errors' and method == 'GET':
                     return self._send(200, {'pc': errlog.PC, 'ver': errlog.VER, 'rows': errlog.recent(int(qs.get('n') or 300)),
                                             'state': {k: (v or {}).get('error') for k, v in (('sync', cloudsync.STATE), ('handoff', handoff.STATE), ('update', updater.STATE), ('backup', BACKUP_STATE))}})
-                if handoff.STATE['readonly'] and method != 'GET' and p0 not in ('login', 'logout', 'shutdown') and p0 not in ('ai_ocr', 'ai_summary', 'ai_test', 'ai_plan', 'ai_doc'):
+                if handoff.STATE['readonly'] and method != 'GET' and p0 not in ('login', 'logout', 'shutdown') and p0 not in ('ai_ocr', 'ai_summary', 'ai_test', 'ai_plan', 'ai_doc', 'ai_chat', 'ai_chat_apply'):
                     raise ApiError('البرنامج انتقل إلى الحاسبة %s — هذه الحاسبة للقراءة فقط. أعد تشغيل البرنامج هنا لاستلامه. '
                                    '(The program moved to another PC — read-only here.)' % (handoff.STATE.get('other') or 'الأخرى'), 423)
                 if p0 == 'shutdown' and method == 'POST':
@@ -763,7 +763,7 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         threading.Thread(target=shutdown_now, args=(3 if ok else 10,), daemon=True).start()
                         res = {'ok': True, 'uploaded': ok, 'handoff': handoff.STATE['enabled']}
-                elif p0 in ('restore', 'ai_ocr', 'ai_summary', 'ai_test', 'ai_plan', 'ai_doc') and method == 'POST':
+                elif p0 in ('restore', 'ai_ocr', 'ai_summary', 'ai_test', 'ai_plan', 'ai_doc', 'ai_chat', 'ai_chat_apply') and method == 'POST':
                     res = self._special(conn, p0, body, user)
                 elif method == 'GET':
                     res = self._get(conn, parts, qs, user)
@@ -830,6 +830,18 @@ class Handler(BaseHTTPRequestHandler):
                 v = dict(next((x for x in d['visits'] if x['id'] == int(b.get('visit_id') or 0)), {}))
                 v.update({k: b[k] for k in ('complaint', 'exam', 'diagnosis', 'plan', 'imaging', 'bp_sys', 'bp_dia', 'hr', 'temp', 'spo2', 'rbs', 'weight', 'waist', 'meds') if k in b})
                 return features.ai_plan(m.get('ai_key'), m.get('ai_model_plan') or features.PLAN_MODEL, d, v, d.get('family'), m.get('ai_prompt_plan'))
+            if p0 in ('ai_chat', 'ai_chat_apply'):
+                if user['role'] != 'doctor':
+                    raise ApiError('Doctor only', 403)
+                d = patient_full(conn, int(b.get('patient_id') or 0), user)
+                if not d:
+                    raise ApiError('Patient not found', 404)
+                v = dict(next((x for x in d['visits'] if x['id'] == int(b.get('visit_id') or 0)), {}))
+                v.update({k: b[k] for k in ('complaint', 'exam', 'diagnosis', 'plan', 'imaging', 'bp_sys', 'bp_dia', 'hr', 'temp', 'spo2', 'rbs', 'weight', 'waist', 'meds') if k in b})
+                fn = features.ai_chat if p0 == 'ai_chat' else features.ai_chat_apply
+                out = fn(m.get('ai_key'), m.get('ai_model_chat') or features.CHAT_MODEL, d, v, d.get('family'),
+                         b.get('messages') or [], b.get('plan'), m.get('ai_prompt_chat'))
+                return {'text': out} if p0 == 'ai_chat' else out
             if p0 == 'ai_doc':
                 if user['role'] != 'doctor':
                     raise ApiError('Doctor only', 403)
@@ -1042,6 +1054,11 @@ class Handler(BaseHTTPRequestHandler):
                 conn.execute('UPDATE patients SET %s WHERE id=?' % ', '.join('%s=?' % c for c in fill), list(fill.values()) + [keep])
             conn.execute('DELETE FROM patients WHERE id=?', (drop,))
             return {'id': keep}
+        if p0 == 'visit_ai' and arg and method == 'PUT':     # chat / suggestions kept with the visit
+            f = {k: (json.dumps(b[k], ensure_ascii=False) if b[k] is not None else None) for k in ('ai_chat', 'ai_plan') if k in b}
+            if f:
+                conn.execute('UPDATE visits SET %s WHERE id=?' % ', '.join('%s=?' % k for k in f), list(f.values()) + [arg])
+            return {'ok': True}
         if p0 == 'visit':
             if method == 'POST':
                 return {'id': save_visit(conn, None, b)}

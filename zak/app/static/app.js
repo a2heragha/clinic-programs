@@ -675,6 +675,7 @@ function openVisit(vid) {
       <span class="sp"></span>
       <div class="vtop">
         <button id="pAi" class="aibtn" title="AI suggestions for today from the history and what is typed now">✨ AI suggestions</button>
+        <button id="pChat" class="aibtn chatbtn" title="Talk with the AI about this patient — then put what you agreed into the suggestions box">💬 Chat</button>
         <button class="primary" id="pRx" title="Ctrl+P">🖨️ Prescription</button>
         <button id="addLabs">🧪 + Lab results</button>
         <button id="pLab">🧾 Lab request</button><button id="pEcho">❤️ Echo</button>
@@ -701,6 +702,8 @@ function openVisit(vid) {
     </div>
   </div><div id="aiPlanBox"></div>`;
   $('#vinfoL').append($('#dueCard'), $('#summary')); $('#vinfoR').append($('#labsCard'));
+  { const sv = curVisit(); let pl = null; try { pl = sv && sv.ai_plan ? JSON.parse(sv.ai_plan) : null; } catch (e) { }
+    AIP = pl; if (pl && typeof renderAiPlan === 'function') renderAiPlan(pl, true); if (typeof aiChatClose === 'function') aiChatClose(); }
   const root = $('#vedit');
   $$('[data-k]', root).forEach(el => {
     const k = el.dataset.k;
@@ -728,7 +731,7 @@ function openVisit(vid) {
   $('#copyLast').onclick = () => { const prev = P.visits.find(y => y.id !== VIS.id && y.date <= x.date && (y.meds || []).length); if (!prev) return toast('No previous medications');
     const cur = currentMeds(); prev.meds.forEach(l => { if (!cur.includes(l)) cur.push(l); }); renderMeds(cur); saveMeds(); toast('Copied from ' + dmy(prev.date)); };
   $('#saveTpl').onclick = () => templateDialog({ name: ($('[data-k=diagnosis]', root).value.split('\n')[0] || ''), lines: currentMeds(), diagnosis: '', plan: '' });
-  $('#pRx').onclick = printRx; $('#pLab').onclick = labRequestDialog; $('#pEcho').onclick = echoDialog; $('#pRep').onclick = reportDialog; $('#pRef').onclick = referralDialog; $('#pSick').onclick = sickDialog; $('#pSum').onclick = printSummaryAr; $('#pAi').onclick = aiPlan;
+  $('#pRx').onclick = printRx; $('#pLab').onclick = labRequestDialog; $('#pEcho').onclick = echoDialog; $('#pRep').onclick = reportDialog; $('#pRef').onclick = referralDialog; $('#pSick').onclick = sickDialog; $('#pSum').onclick = printSummaryAr; $('#pAi').onclick = aiPlan; $('#pChat').onclick = aiChatOpen;
   $('#addLabs').onclick = () => addLabsDialog(x.date);
   $('#toCalc').onclick = () => location.hash = '#/calc?p=' + p.id + '&v=' + x.id;
   $('#delV').onclick = async () => { if (!confirm('Delete this visit (' + dmy(x.date) + ')?')) return; await saveVisitNow(); await api('DELETE', '/api/visit/' + x.id); location.hash = '#/p/' + p.id; };

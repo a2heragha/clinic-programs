@@ -435,10 +435,19 @@ def patient_context(pdata):
 
 
 PLAN_MODEL = 'claude-sonnet-5-5'
+PLAN_SCHEMA = {'type': 'object', 'properties': {
+    'focus': {'type': 'string'}, 'red_flags': {'type': 'array', 'items': {'type': 'string'}}, 'questions': {'type': 'array', 'items': {'type': 'string'}}, 'exam': {'type': 'array', 'items': {'type': 'string'}},
+    'ddx': {'type': 'array', 'items': {'type': 'object', 'properties': {'dx': {'type': 'string'}, 'for': {'type': 'string'}, 'against': {'type': 'string'}}, 'required': ['dx']}},
+    'tests': {'type': 'array', 'items': {'type': 'object', 'properties': {'test': {'type': 'string'}, 'why': {'type': 'string'}}, 'required': ['test']}},
+    'meds': {'type': 'array', 'items': {'type': 'object', 'properties': {'action': {'type': 'string', 'enum': ['start', 'continue', 'adjust', 'stop']},
+                                                                          'line': {'type': 'string'}, 'why': {'type': 'string'}}, 'required': ['action', 'line']}},
+    'plan': {'type': 'array', 'items': {'type': 'string'}}, 'follow_up_days': {'type': ['integer', 'null']}},
+    'required': ['focus', 'red_flags', 'questions', 'exam', 'ddx', 'tests', 'meds', 'plan']}
 
 
-def ai_plan(key, model, pdata, visit, family=None, extra=''):
-    """Suggestions for today's visit (questions, exam, differential, tests, medicines) from the history + what is typed now."""
+
+def plan_context(pdata, visit, family=None):
+    """the patient's file + today's entries, as text for the AI"""
     p = pdata['patient']
     L = ['PATIENT: %s, age %s, %s. Smoking: %s. Height %s cm.' % (p.get('gender') or '?', p.get('age'), p.get('occupation') or '', p.get('smoking') or '?', p.get('height') or '?'),
          'Chronic conditions: ' + (p.get('chronic') or 'none recorded').replace('\n', '; '),
@@ -481,6 +490,12 @@ def ai_plan(key, model, pdata, visit, family=None, extra=''):
     if visit.get('meds'):
         cur.append('Medicines written today: ' + '; '.join(visit['meds']))
     L.append(' | '.join(cur))
+    return '\n'.join(L)
+
+
+def ai_plan(key, model, pdata, visit, family=None, extra=''):
+    """Suggestions for today's visit (questions, exam, differential, tests, medicines) from the history + what is typed now."""
+    L = [plan_context(pdata, visit, family)]
     prompt = ('\n'.join(L) + '\n\n'
               'You support an experienced internist in Mosul, Iraq, during today\'s visit. Using the history and what is typed for today, suggest what to do NOW. '
               'Be specific to this patient (doses adjusted to eGFR, allergies and interactions respected, drugs available in Iraq by generic name). '
@@ -496,14 +511,7 @@ def ai_plan(key, model, pdata, visit, family=None, extra=''):
               '"plan":["short plan / advice items"],'
               '"follow_up_days":number or null}\n'
               'Max 6 items per list, most important first.') + doctor_says(extra)
-    schema = {'type': 'object', 'properties': {
-        'focus': {'type': 'string'}, 'red_flags': {'type': 'array', 'items': {'type': 'string'}}, 'questions': {'type': 'array', 'items': {'type': 'string'}}, 'exam': {'type': 'array', 'items': {'type': 'string'}},
-        'ddx': {'type': 'array', 'items': {'type': 'object', 'properties': {'dx': {'type': 'string'}, 'for': {'type': 'string'}, 'against': {'type': 'string'}}, 'required': ['dx']}},
-        'tests': {'type': 'array', 'items': {'type': 'object', 'properties': {'test': {'type': 'string'}, 'why': {'type': 'string'}}, 'required': ['test']}},
-        'meds': {'type': 'array', 'items': {'type': 'object', 'properties': {'action': {'type': 'string', 'enum': ['start', 'continue', 'adjust', 'stop']},
-                                                                              'line': {'type': 'string'}, 'why': {'type': 'string'}}, 'required': ['action', 'line']}},
-        'plan': {'type': 'array', 'items': {'type': 'string'}}, 'follow_up_days': {'type': ['integer', 'null']}},
-        'required': ['focus', 'red_flags', 'questions', 'exam', 'ddx', 'tests', 'meds', 'plan']}
+    schema = PLAN_SCHEMA
     out = ai_tool(key, model or PLAN_MODEL, prompt, schema, 4000,
                   system='You are a careful internal-medicine decision-support assistant. Suggestions are reviewed by the physician before use. Use only the given data; say when data is missing.')
     for k in ('red_flags', 'questions', 'exam', 'ddx', 'tests', 'meds', 'plan'):
@@ -560,3 +568,59 @@ def ai_doc(key, model, pdata, visit, kind, lang='en', to='', extra=''):
     prompt = (ctx + '\n\nWrite %s, in %s. %s%s Do not write the clinic header, the date or the signature — they are printed by the program. '
               'Plain text only (no markdown), ready to print.' % (what, language, how, (' Addressed to: %s.' % to) if to else '')) + doctor_says(extra)
     return {'text': ai_call(key, model or DEFAULT_MODEL, prompt, 1500, system=sysm).strip()}
+
+
+# ------------------------------------------------------------------ chat with the AI about this patient (doctor)
+CHAT_MODEL = PLAN_MODEL
+
+
+def _clean_msgs(messages):
+    out = []
+    for m in messages or []:
+        r, c = m.get('role'), str(m.get('content') or '').strip()
+        if r in ('user', 'assistant') and c:
+            if out and out[-1]['role'] == r:
+                out[-1]['content'] += '\n\n' + c
+            else:
+                out.append({'role': r, 'content': c[:8000]})
+    while out and out[0]['role'] != 'user':
+        out.pop(0)
+    return out[-30:]
+
+
+def _chat_system(pdata, visit, family, plan, extra):
+    return ('You are discussing one patient with the treating internist in Mosul, Iraq, during today\'s visit. '
+            'Answer in English, concise and clinical (short paragraphs or bullet points), specific to this patient: doses adjusted to renal '
+            'function, allergies and interactions respected, drugs available in Iraq by generic name. Use only the data given and say '
+            'when something needed is missing. The physician decides; you advise.\n\n'
+            'PATIENT FILE AND TODAY\'S ENTRIES:\n' + plan_context(pdata, visit, family) +
+            ('\n\nCURRENT "AI SUGGESTIONS FOR TODAY" BOX (JSON):\n' + json.dumps(plan, ensure_ascii=False)[:12000] if plan else '') +
+            doctor_says(extra))
+
+
+def ai_chat(key, model, pdata, visit, family, messages, plan=None, extra=''):
+    if not key:
+        raise RuntimeError('No AI key — add it in Settings → AI features')
+    msgs = _clean_msgs(messages)
+    if not msgs or msgs[-1]['role'] != 'user':
+        raise RuntimeError('Write a message first')
+    res = _post({'model': model or CHAT_MODEL, 'max_tokens': 1500, 'system': _chat_system(pdata, visit, family, plan, extra),
+                 'messages': msgs}, key)
+    return ''.join(b.get('text', '') for b in res.get('content', []) if b.get('type') == 'text').strip()
+
+
+def ai_chat_apply(key, model, pdata, visit, family, messages, plan=None, extra=''):
+    """the suggestions box, changed as agreed in the conversation"""
+    msgs = _clean_msgs(messages)
+    if not msgs:
+        raise RuntimeError('The conversation is empty')
+    talk = '\n\n'.join(('DOCTOR: ' if m['role'] == 'user' else 'AI: ') + m['content'] for m in msgs)
+    prompt = ('CONVERSATION BETWEEN THE DOCTOR AND YOU ABOUT THIS PATIENT:\n' + talk + '\n\n'
+              'Now give the "AI suggestions for today" box with the answer tool, changed exactly as agreed in the conversation: '
+              'add what was agreed, remove or change what the doctor rejected or corrected, and keep the other items of the current box '
+              'as they are (if there is no current box, build it from the conversation and the file). In English. Max 6 items per list.')
+    out = ai_tool(key, model or CHAT_MODEL, prompt, PLAN_SCHEMA, 4000, system=_chat_system(pdata, visit, family, plan, extra))
+    for k in ('red_flags', 'questions', 'exam', 'ddx', 'tests', 'meds', 'plan'):
+        if not isinstance(out.get(k), list):
+            out[k] = []
+    return out

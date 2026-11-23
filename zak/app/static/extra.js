@@ -598,6 +598,7 @@ const AI_SVC = [   // [key, service, default model, example instructions]
   ['ocr', 'Reading lab sheets (photo / PDF)', 'claude-haiku-5-5', 'e.g. The lab "Al-Hayat" writes HbA1c in mmol/mol — convert to %. Ignore the reference ranges.'],
   ['sum', 'Summary before this visit', 'claude-haiku-5-5', 'e.g. Max 80 words. Bullet points. Start with active problems and their control; then medicines changed in the last 3 visits; skip normal results.'],
   ['plan', 'AI suggestions for today', 'claude-sonnet-5-5', 'e.g. Focus on diabetes and kidney protection; give at most 3 tests; prefer drugs available in Mosul pharmacies; no lifestyle advice.'],
+  ['chat', 'Chat about the patient', 'claude-sonnet-5-5', 'e.g. Short answers, bullet points; cite the guideline (ADA, KDIGO, ESC) when you recommend a drug.'],
   ['ref', 'Referral letter', 'claude-sonnet-5-5', 'e.g. Short and formal. Always state the eGFR and the last HbA1c. End with my phone number for contact.'],
   ['rep', 'Medical report (case report)', 'claude-sonnet-5-5', 'e.g. For employer / court: diagnoses and dates only, no lab values, no prognosis.'],
   ['echo', 'Echo request', 'claude-sonnet-5-5', 'e.g. One line indication, then the questions for the echo doctor as a numbered list.'],
