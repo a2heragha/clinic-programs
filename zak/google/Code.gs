@@ -16,7 +16,13 @@ const KEEP_BACKUPS = 30;
 
 const A_COLS = ['uid', 'date', 'time', 'seq', 'patient_id', 'name', 'phone', 'note', 'status', 'updated_at', 'deleted', 'age', 'srv_ts', 'by', 'weight', 'kind', 'call', 'hold', 'reminded'];
 const P_COLS = ['id', 'name', 'birth_year', 'phone', 'address', 'last'];
-const N_COLS = ['uid', 'name', 'gender', 'birth_year', 'phone', 'address', 'occupation', 'by', 'created', 'pc_id'];
+const N_COLS = ['uid', 'name', 'gender', 'birth_year', 'phone', 'address', 'occupation', 'by', 'created', 'pc_id', 'claim', 'claim_t'];
+const F_COLS = ['uid', 'patient_id', 'name', 'mime', 'fname', 'date', 'by', 'created', 'pc_id', 'claim', 'claim_t'];   // results photographed by the secretary
+const O_COLS = ['seq', 't', 'dev', 'tbl', 'k', 'op', 'data'];                                                          // changes of every device, in one order
+const ID_TABLES = ['patients', 'visits', 'visit_meds', 'labs', 'files', 'links', 'rx_templates', 'users'];
+const FK = { visits: { patient_id: 'patients' }, visit_meds: { visit_id: 'visits' }, labs: { patient_id: 'patients', visit_id: 'visits' },
+  files: { patient_id: 'patients', visit_id: 'visits' }, links: { a_id: 'patients', b_id: 'patients' } };
+const CLAIM_MS = 10 * 60 * 1000;
 const C_COLS = ['id', 'json'];
 const SESSION_H = 12;
 
@@ -39,11 +45,11 @@ function setup() {
     DriveApp.getFileById(ss.getId()).moveTo(clinic);
     props.setProperty('SHEET_ID', ss.getId());
   }
-  [['appointments', A_COLS], ['patients', P_COLS], ['new_patients', N_COLS], ['clinical', C_COLS], ['config', ['k', 'v']]].forEach(([n, c]) => {
+  [['appointments', A_COLS], ['patients', P_COLS], ['new_patients', N_COLS], ['clinical', C_COLS], ['config', ['k', 'v']], ['phone_files', F_COLS], ['ops', O_COLS]].forEach(([n, c]) => {
     const sh = sheet_(ss, n, c);
     sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).setNumberFormat('@');   // everything as text (phones keep their 0)
   });
-  const s1 = ss.getSheets().filter(s => ['appointments', 'patients', 'new_patients', 'clinical', 'config'].indexOf(s.getName()) < 0);
+  const s1 = ss.getSheets().filter(s => ['appointments', 'patients', 'new_patients', 'clinical', 'config', 'phone_files', 'ops'].indexOf(s.getName()) < 0);
   s1.forEach(s => { if (s.getLastRow() === 0) ss.deleteSheet(s); });
 
   let token = props.getProperty('TOKEN');
@@ -113,6 +119,28 @@ function nextTs_() {   // strictly increasing server time stamp (the pull cursor
   props.setProperty('LAST_TS', String(t));
   return t;
 }
+function sheetOf_(name, cols) {   // the sheet, made (or its header extended) when this version meets an older spreadsheet
+  const ss = ss_();
+  let sh = ss.getSheetByName(name);
+  if (!sh) { sh = ss.insertSheet(name); sh.getRange(1, 1, sh.getMaxRows(), cols.length).setNumberFormat('@'); }
+  if (sh.getRange(1, cols.length).getValue() !== cols[cols.length - 1]) {
+    if (sh.getMaxColumns() < cols.length) sh.insertColumnsAfter(sh.getMaxColumns(), cols.length - sh.getMaxColumns());
+    sh.getRange(1, 1, 1, cols.length).setValues([cols]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+/* rows nobody (else) is handling: each phone registration / photographed result is taken by one device only */
+function claim_(sh, cols, rows, pc) {
+  const now = Date.now(), out = [];
+  rows.forEach(o => {
+    if (o.pc_id) return;
+    if (o.claim && o.claim !== pc && now - Number(o.claim_t || 0) < CLAIM_MS) return;
+    sh.getRange(o._row, cols.indexOf('claim') + 1, 1, 2).setNumberFormat('@').setValues([[pc, String(now)]]);
+    const x = Object.assign({}, o); delete x._row; out.push(x);
+  });
+  return out;
+}
 function cfg_() {
   const sh = sh_('config');
   const n = sh.getLastRow();
@@ -160,16 +188,21 @@ function doPost(e) {
       case 'ping':
         return json_({ ok: true, clinic: CLINIC_NAME });
       case 'push':
-        return json_({ ok: true, accepted: upsertAppts_(req.rows || [], 'clinic') });
+        return json_({ ok: true, accepted: upsertAppts_(req.rows || [], req.multi ? 'pc:' + (req.pc || '') : 'clinic') });
       case 'pull': {
         // the last 2 minutes are sent again: phone writes may land just behind the cursor
         const since = Number(req.since || 0);
         let cursor = since;
         const all = readAll_(ss.getSheetByName('appointments'), A_COLS);
         all.forEach(o => { cursor = Math.max(cursor, Number(o.srv_ts || 0)); });
-        const rows = all.filter(o => Number(o.srv_ts || 0) > since - 120000 && o.by !== 'clinic').map(o => { delete o._row; return o; });
-        const np = readAll_(ss.getSheetByName('new_patients'), N_COLS).filter(o => !o.pc_id).map(o => { delete o._row; return o; });
-        return json_({ ok: true, rows: rows, cursor: cursor, new_patients: np });
+        const me = 'pc:' + (req.pc || ''), old = req.multi ? '' : 'clinic';
+        const rows = all.filter(o => Number(o.srv_ts || 0) > since - 120000 && o.by !== me && o.by !== old).map(o => { delete o._row; return o; });
+        const nsh = sheetOf_('new_patients', N_COLS);
+        const np = req.multi ? claim_(nsh, N_COLS, readAll_(nsh, N_COLS), req.pc || '')
+          : readAll_(nsh, N_COLS).filter(o => !o.pc_id).map(o => { delete o._row; return o; });
+        const fsh = sheetOf_('phone_files', F_COLS);
+        const nf = req.multi ? claim_(fsh, F_COLS, readAll_(fsh, F_COLS), req.pc || '') : [];
+        return json_({ ok: true, rows: rows, cursor: cursor, new_patients: np, new_files: nf });
       }
       case 'ack_patients': {      // [[uid, pc file number]]
         const sh = ss.getSheetByName('new_patients');
@@ -178,6 +211,29 @@ function doPost(e) {
         all.forEach(o => { if (map[o.uid] !== undefined && !o.pc_id) sh.getRange(o._row, N_COLS.indexOf('pc_id') + 1).setValue(String(map[o.uid])); });
         return json_({ ok: true });
       }
+      case 'ack_files': {         // [[uid, pc file id]]
+        const sh = sheetOf_('phone_files', F_COLS);
+        const all = readAll_(sh, F_COLS), map = {};
+        (req.rows || []).forEach(r => { map[r[0]] = r[1]; });
+        all.forEach(o => { if (map[o.uid] !== undefined && !o.pc_id) sh.getRange(o._row, F_COLS.indexOf('pc_id') + 1).setValue(String(map[o.uid])); });
+        return json_({ ok: true });
+      }
+      // ---------------------------------------------------------- several devices at the same time (opsync.py)
+      case 'ops_init': {          // the first device on the new way: the numbers already used, and the start of the change list
+        const L = lease_();
+        if (L.ops_on) return json_(Object.assign({ ok: true, already: true }, L));
+        const mx = {};
+        Object.keys(req.floor || {}).forEach(t => { mx[t] = Number(req.floor[t]) || 0; });
+        PropertiesService.getScriptProperties().setProperty('IDMAX', JSON.stringify(mx));
+        sheetOf_('ops', O_COLS);
+        Object.assign(L, { ops_on: true, opseq: 0, holder: '', name: '', pending: '', pending_name: '', pending_t: 0 });
+        saveLease_(L);
+        return json_(Object.assign({ ok: true }, L));
+      }
+      case 'ops_push':
+        return json_(opsPush_(req));
+      case 'ops_pull':
+        return json_(opsPull_(req));
       case 'patients': {
         const ps = ss.getSheetByName('patients');
         const rows = (req.rows || []).map(r => P_COLS.map((c, i) => str_(r[i])));
@@ -249,9 +305,13 @@ function doPost(e) {
       }
       case 'db_push': {
         const L = lease_();
-        if (L.holder !== req.pc) return json_({ ok: false, error: 'not holder', holder: L.holder, name: L.name });
+        if (L.ops_on) {           // several devices: a full copy for new devices / safety, with the change it includes
+          if (req.opseq === undefined || req.opseq === null) return json_({ ok: false, error: 'This program is too old for this clinic — restart it to update' });
+          if (Number(req.opseq) < Number(L.opseq || 0)) return json_({ ok: true, seq: L.seq, t: L.t, skipped: true });
+          L.opseq = Number(req.opseq);
+        } else if (L.holder !== req.pc) return json_({ ok: false, error: 'not holder', holder: L.holder, name: L.name });
         const f = sub_('live').createFile(Utilities.newBlob(Utilities.base64Decode(req.data), 'application/gzip', 'clinic_live_' + (L.seq + 1) + '.db.gz'));
-        Object.assign(L, { seq: L.seq + 1, t: Date.now(), file: f.getId(), beat: Date.now(), by: L.name });
+        Object.assign(L, { seq: L.seq + 1, t: Date.now(), file: f.getId(), beat: Date.now(), by: req.name || L.name });
         saveLease_(L);
         const files = [], it = sub_('live').getFiles();
         while (it.hasNext()) files.push(it.next());
@@ -262,7 +322,7 @@ function doPost(e) {
       case 'db_pull': {
         const L = lease_();
         if (!L.file) return json_({ ok: true, seq: 0 });
-        return json_({ ok: true, seq: L.seq, t: L.t, by: L.by || '', data: Utilities.base64Encode(DriveApp.getFileById(L.file).getBlob().getBytes()) });
+        return json_({ ok: true, seq: L.seq, t: L.t, by: L.by || '', opseq: L.opseq, ops_on: !!L.ops_on, data: Utilities.base64Encode(DriveApp.getFileById(L.file).getBlob().getBytes()) });
       }
       case 'files_list': {
         const names = [], it = sub_('files').getFiles();
@@ -390,6 +450,91 @@ function apiSaveAppt(tok, a) {
   } finally { lock.releaseLock(); }
 }
 
+// ------------------------------------------------------------------ the change list (several devices at the same time)
+function opsPush_(req) {
+  const cache = CacheService.getScriptCache(), ck = 'ob_' + req.batch;
+  const done = req.batch && cache.get(ck);
+  if (done) return JSON.parse(done);                       // the same batch sent again (the answer was lost): same answer
+  const props = PropertiesService.getScriptProperties();
+  const mx = JSON.parse(props.getProperty('IDMAX') || '{}');
+  Object.keys(req.floor || {}).forEach(t => { mx[t] = Math.max(mx[t] || 0, Number(req.floor[t]) || 0); });
+  const sh = sheetOf_('ops', O_COLS), map = {}, remap = [], now = Date.now();
+  let seq = Math.max(sh.getLastRow() - 1, 0);
+  const first = seq + 1;
+  const rows = (req.ops || []).map(o => {
+    const t = o.tbl, isId = ID_TABLES.indexOf(t) >= 0;
+    let k = String(o.k), d = o.data || null;
+    if (isId) {
+      map[t] = map[t] || {};
+      if (map[t][k]) k = map[t][k];
+      if (o.op === 'i') {
+        // a number is new only when no device has used it before (the floor of a device leaves out its own new rows)
+        if (Number(k) <= (mx[t] || 0)) {
+          const nid = (mx[t] || 0) + 1;
+          map[t][String(o.k)] = String(nid); remap.push({ tbl: t, old: Number(o.k), new: nid });
+          k = String(nid);
+        }
+        mx[t] = Math.max(mx[t] || 0, Number(k));
+      }
+      if (d) {
+        d = Object.assign({}, d);
+        if (d.id !== undefined) d.id = Number(k);
+        Object.keys(FK[t] || {}).forEach(c => { const pt = FK[t][c]; if (d[c] !== undefined && d[c] !== null && map[pt] && map[pt][String(d[c])]) d[c] = Number(map[pt][String(d[c])]); });
+      }
+    }
+    seq++;
+    let js = d ? JSON.stringify(d) : '';
+    if (js.length > 45000) {                               // a cell holds 50,000 characters: a very long row goes to a file
+      const f = sub_('ops').createFile(Utilities.newBlob(js, 'application/json', 'op_' + seq + '.json'));
+      js = '@file:' + f.getId();
+    }
+    return [String(seq), String(now), String(req.device || ''), t, k, o.op, js];
+  });
+  if (rows.length) {
+    if (sh.getMaxRows() < first + rows.length) sh.insertRowsAfter(sh.getMaxRows(), first + rows.length - sh.getMaxRows() + 100);
+    sh.getRange(first + 1, 1, rows.length, O_COLS.length).setNumberFormat('@').setValues(rows);
+  }
+  props.setProperty('IDMAX', JSON.stringify(mx));
+  const out = { ok: true, from: first, last: seq, remap: remap };
+  if (req.batch) cache.put(ck, JSON.stringify(out), 21600);
+  return out;
+}
+function opsPull_(req) {
+  const sh = sheetOf_('ops', O_COLS), since = Math.max(Number(req.since || 0), 0), last = Math.max(sh.getLastRow() - 1, 0);
+  const n = Math.min(last - since, 1000);
+  const ops = n > 0 ? sh.getRange(since + 2, 1, n, O_COLS.length).getValues().map(r => {
+    let js = String(r[6] || '');
+    if (js.indexOf('@file:') === 0) js = DriveApp.getFileById(js.slice(6)).getBlob().getDataAsString();
+    return { seq: Number(r[0]), dev: String(r[2]), tbl: String(r[3]), k: String(r[4]), op: String(r[5]), data: js ? JSON.parse(js) : null };
+  }) : [];
+  return { ok: true, ops: ops, last: since + Math.max(n, 0), more: since + n < last, top: last };
+}
+
+// secretary: photograph / upload a result sheet → the patient's investigation files on the clinic PCs
+function apiUploadFile(tok, a) {
+  const u = session_(tok);
+  if (u.role !== 'secretary' && u.role !== 'doctor') throw new Error('Not allowed');
+  const pid = String(a.patient_id || '').trim();
+  if (!pid) throw new Error('No patient');
+  const mime = String(a.mime || 'image/jpeg');
+  if (!(mime.indexOf('image/') === 0 || mime === 'application/pdf')) throw new Error('صورة أو PDF فقط');
+  const bytes = Utilities.base64Decode(String(a.data || ''));
+  if (!bytes.length) throw new Error('الملف فارغ');
+  if (bytes.length > 15 * 1024 * 1024) throw new Error('الملف أكبر من 15 MB');
+  const uid = Utilities.getUuid().replace(/-/g, '').slice(0, 16);
+  const ext = mime === 'application/pdf' ? 'pdf' : mime === 'image/png' ? 'png' : 'jpg';
+  const fname = pid.replace(/[^0-9a-zA-Z]/g, '_') + '__phone_' + uid + '.' + ext;
+  sub_('files').createFile(Utilities.newBlob(bytes, 'application/octet-stream', fname));
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const sh = sheetOf_('phone_files', F_COLS);
+    writeRow_(sh, sh.getLastRow() + 1, F_COLS, { uid: uid, patient_id: pid, name: String(a.name || '').slice(0, 120), mime: mime, fname: fname,
+      date: String(a.date || '').slice(0, 10), by: 'phone:' + u.name, created: String(Date.now()) });
+  } finally { lock.releaseLock(); }
+  return { ok: true, uid: uid };
+}
+
 function apiNewPatient(tok, p) {
   const u = session_(tok);
   if (u.role !== 'secretary' && u.role !== 'doctor') throw new Error('Not allowed');
@@ -428,7 +573,7 @@ function apiRecall(tok) {
 // for the page: everything returns {ok:false,error} instead of throwing, except LOGIN
 function call(fn, args) {
   try {
-    const f = { apiLogin, apiBoot, apiDay, apiSaveAppt, apiNewPatient, apiClinical, apiRecall }[fn];
+    const f = { apiLogin, apiBoot, apiDay, apiSaveAppt, apiNewPatient, apiClinical, apiRecall, apiUploadFile }[fn];
     if (!f) throw new Error('Unknown');
     return f.apply(null, args || []);
   } catch (e) {
