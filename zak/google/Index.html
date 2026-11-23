@@ -448,7 +448,7 @@ async function patient(pid) {
       }
       if (ok) toast('تم إرسال ' + ok + ' ملف إلى ملف المريض');
     };
-    $('#up').onchange = upl; $('#upc').onchange = upl;
+    if ($('#up')) { $('#up').onchange = upl; $('#upc').onchange = upl; }
     $('#pwts').onclick = async () => {   // weight taken by the secretary → today's appointment (and the visit) — added to today's list if not there
       const w = digits2($('#pwt').value); if (!(+w >= 2 && +w <= 300)) return toast('الوزن بين 2 و 300 كغم', true);
       try {
