@@ -185,6 +185,10 @@ function doPost(e) {
   if (!req.token || req.token !== prop_('TOKEN')) return json_({ ok: false, error: 'Wrong sync token' });
   const mv = prop_('MOVED_TO');            // the clinic moved to another Google account: tell the program the new link
   if (mv) return json_({ ok: false, moved: mv, error: 'moved' });
+  // several devices: a program from before that (no "v") would take the secretary's new patients and photos into a copy
+  // that can never be sent back, and overwrite the online lists with old ones — it is refused until it updates itself
+  if (!req.v && req.action !== 'ping' && lease_().ops_on)
+    return json_({ ok: false, old: true, error: 'This program is too old for this clinic — close it and open it again (it updates itself), or install the new version' });
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {

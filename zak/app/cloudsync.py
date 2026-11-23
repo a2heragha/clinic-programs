@@ -115,7 +115,7 @@ def call(url, token, action, timeout=60, **payload):
         if m:
             payload.update(multi=1, pc=pc)
     extra = dict(payload)
-    payload.update({'token': token, 'action': action})
+    payload.update({'token': token, 'action': action, 'v': 2})     # v: the script refuses programs too old for several devices
     data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
     req = urllib.request.Request(url, data=data, headers={'Content-Type': 'text/plain;charset=utf-8'}, method='POST')
     with urllib.request.urlopen(req, timeout=timeout) as r:    # Apps Script answers with a redirect; urllib follows it
