@@ -202,6 +202,7 @@ const LOCAL = {
   apiNewPatient: async (t, p) => ({ id: (await lapi('POST', '/api/patient', p)).id }),
   apiEditPatient: async (t, id, p) => ({ id: (await lapi('PUT', '/api/patient/' + id, p)).id }),
   apiClinical: async (t, pid) => ({ c: await lapi('GET', '/api/mclin/' + pid) }),
+  apiUploadFile: async (t, a) => ({ id: (await lapi('POST', '/api/file', Object.assign({}, a, { patient_id: +a.patient_id, title: '' }))).id }),
 };
 function rpc(fn, ...args) {
   if (!ONLINE) return LOCAL[fn].apply(null, args).then(r => Object.assign({ ok: true }, r), e => {
@@ -433,17 +434,21 @@ async function patient(pid) {
     ${DR() ? '' : `<div class="row mt" style="background:var(--accent-2);border-radius:12px;padding:8px"><label class="wtl" style="flex:1;font-size:14px">${ic('scale')}الوزن اليوم<input class="wt" id="pwt" inputmode="decimal" placeholder="كغم" style="flex:1"></label><button class="s pri" id="pwts" style="flex:0 0 auto">${ic('check')}حفظ الوزن</button></div>
       <h3 class="mt">${ic('cal')}حجز موعد</h3><div class="row"><input type="date" id="bd" value="${todayISO()}">${timeSel('bt')}</div>
       <input id="bn" class="mt" placeholder="ملاحظة"><button class="p w100 mt" id="bok">${ic('check')}حجز</button>`}
-    ${!ONLINE && !DR() ? `<div class="row mt"><button class="s" id="ped" style="justify-content:center;padding:10px">${ic('edit')}تعديل البيانات</button><label class="upl">${ic('camera')}رفع فحص<input type="file" id="up" accept="${'image/' + '*,application/pdf'}" multiple hidden></label></div>` : ''}</div>`;
+    ${!DR() ? `<div class="row mt">${ONLINE ? '' : `<button class="s" id="ped" style="justify-content:center;padding:10px">${ic('edit')}تعديل البيانات</button>`}<label class="upl">${ic('camera')}تصوير فحص<input type="file" id="upc" accept="image/*" capture="environment" hidden></label><label class="upl">${ic('camera')}رفع ملفات فحص<input type="file" id="up" accept="${'image/' + '*,application/pdf'}" multiple hidden></label></div>
+      <div class="small muted mt">الفحوصات تظهر للطبيب في ملف المريض، ويختار هو قراءتها بالذكاء الاصطناعي.</div>` : ''}</div>`;
   if (!DR()) {
     v.innerHTML = head + (String(pid).startsWith('n:') ? '<div class="card small muted">ملف جديد — يظهر رقمه بعد المزامنة مع حاسبة العيادة.</div>' : '');
-    if (!ONLINE) {
-      $('#ped').onclick = async () => { try { const d = await lapi('GET', '/api/patient/' + pid); go('new', { edit: pid, p: d.patient }); } catch (e) { toast(e.message, true); } };
-      $('#up').onchange = async e => {
-        const fs = Array.from(e.target.files); if (!fs.length) return; toast('جارٍ الرفع…');
-        for (const f of fs) { try { const pl = await payload(f); await lapi('POST', '/api/file', Object.assign(pl, { patient_id: +pid, date: todayISO(), name: f.name, title: '' })); } catch (er) { toast(er.message, true); } }
-        toast('تم إرفاق ' + fs.length + ' ملف');
-      };
-    }
+    if (!ONLINE) $('#ped').onclick = async () => { try { const d = await lapi('GET', '/api/patient/' + pid); go('new', { edit: pid, p: d.patient }); } catch (e) { toast(e.message, true); } };
+    const upl = async e => {      // result sheets brought by the patient → the doctor sees them in the file
+      const fs = Array.from(e.target.files); e.target.value = ''; if (!fs.length) return; toast('جارٍ الرفع…');
+      let ok = 0;
+      for (const f of fs) {
+        try { const pl = await payload(f); await rpc('apiUploadFile', TOK, Object.assign(pl, { patient_id: String(pid), date: todayISO(), name: f.name || 'photo.jpg' })); ok++; }
+        catch (er) { toast(er.message, true); }
+      }
+      if (ok) toast('تم إرسال ' + ok + ' ملف إلى ملف المريض');
+    };
+    $('#up').onchange = upl; $('#upc').onchange = upl;
     $('#pwts').onclick = async () => {   // weight taken by the secretary → today's appointment (and the visit) — added to today's list if not there
       const w = digits2($('#pwt').value); if (!(+w >= 2 && +w <= 300)) return toast('الوزن بين 2 و 300 كغم', true);
       try {
@@ -523,7 +528,7 @@ function newPatient(pre) {
   };
 }
 
-async function payload(f) {   // photos are shrunk before upload (clinic computer only)
+async function payload(f) {   // photos are shrunk before upload
   if (!f.type.startsWith('image/') || f.type === 'image/heic') {
     const buf = new Uint8Array(await f.arrayBuffer()); let bin = ''; for (let i = 0; i < buf.length; i += 32768) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 32768));
     return { mime: f.type || 'application/pdf', data: btoa(bin) };

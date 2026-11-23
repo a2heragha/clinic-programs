@@ -344,7 +344,7 @@ async function viewToday(v, date) {
     <table class="t" id="tb"><thead><tr><th style="width:34px">#</th><th style="width:80px">Time</th><th>Patient</th><th>Age</th><th style="width:70px">Weight</th><th>Phone</th><th>Note</th><th>Status</th><th></th></tr></thead><tbody>
     ${rows.map((r, i) => `<tr data-id="${r.id}"${r.kind === 'auto' ? ` class="auto call-${r.call || 'none'}"` : ''}>
       <td class="muted">${i + 1}</td><td style="white-space:nowrap">${esc(fmtTime(r.time))}</td>
-      <td>${apptBadges(r)}${r.patient_id ? `<a href="#/p/${r.patient_id}" class="ar">${esc(r.pname)}</a>${r.nvisits ? ` <small class="muted">${r.nvisits} visits</small>` : ' <small class="muted">new</small>'}` : `<span class="ar">${esc(r.name || '')}</span> <button class="link small" data-reg="${r.id}">register</button>`}</td>
+      <td>${apptBadges(r)}${r.patient_id ? `<a href="#/p/${r.patient_id}" class="ar">${esc(r.pname)}</a>${r.nvisits ? ` <small class="muted">${r.nvisits} visits</small>` : ' <small class="muted">new</small>'}${r.new_files && ME.role === 'doctor' ? `<span class="appt-new" title="Result sheets brought by the secretary, not opened yet">📎 ${r.new_files} new result${r.new_files > 1 ? 's' : ''}</span>` : ''}` : `<span class="ar">${esc(r.name || '')}</span> <button class="link small" data-reg="${r.id}">register</button>`}</td>
       <td>${esc(r.age != null ? r.age : '')}</td><td><input class="wt" data-wt inputmode="decimal" data-lang="en" value="${r.weight != null ? r.weight : ''}" placeholder="kg" style="width:60px"></td><td>${esc(r.pphone || r.phone || '')}</td><td dir="auto">${esc(r.note || '')}</td>
       <td><span class="status st-${r.status || ''}">${ST[r.status || '']}</span></td>
       <td class="stbtns" style="white-space:nowrap">
@@ -532,6 +532,9 @@ function ptCounts() {
   if (!P) return;
   const set = (k, n) => { const e = $('#ptn_' + k); if (e) e.textContent = n ? n : ''; };
   set('hist', P.visits.length); set('labs', new Set(P.labs.map(l => l.code)).size); set('files', (P.files || []).length);
+  const nw = (P.files || []).filter(f => f.seen === 0).length, b = $('#newRes');      // results brought by the secretary, not opened yet
+  if (b) { b.innerHTML = nw ? `<button class="flag newres" title="Open the investigation files">📎 ${nw} new result${nw > 1 ? 's' : ''} from the secretary</button>` : '';
+    const x = $('button', b); if (x) x.onclick = () => ptShow('files'); }
 }
 async function viewPatient(v, pid, params) {
   const d = await api('GET', '/api/patient/' + pid);
@@ -557,6 +560,7 @@ async function viewPatient(v, pid, params) {
       ${smk ? `<span class="flag smoke">${smk}</span>` : ''}
       ${lines(p.long_meds).length ? `<span class="flag meds" title="${esc(p.long_meds)}">💊 Regular meds: ${lines(p.long_meds).length}</span>` : ''}
       ${p.personal_note ? `<span class="flag smoke ar" title="Personal note">🔒 ${esc(p.personal_note)}</span>` : ''}
+      <span id="newRes"></span>
     </div>
     <div class="pbtns"><button id="editP" title="Edit file">✏️ Edit</button><button id="expP" title="The whole file as a PDF for a referral">📤 Export</button><button id="mergeP" title="Merge a duplicate file into this one">🔗 Merge</button></div>
   </div>
@@ -738,7 +742,7 @@ async function reloadPatient() { const vid = VIS.id; P = await api('GET', '/api/
 function renderFiles() {
   const fs = P.files || [];
   $('#filesCard').innerHTML = `<h3>Investigation files<span class="sp"></span><label class="small primary" style="text-transform:none;cursor:pointer;background:var(--accent);color:#fff;border-radius:6px;padding:2px 8px">+ Image / PDF<input type="file" id="fUp" accept="image/*,application/pdf" multiple hidden></label></h3>
-    <div id="fDrop" class="drop">${fs.length ? `<div class="thumbs">${fs.map(f => `<div class="th" data-f="${f.id}" title="${esc((f.title || f.name || '') + ' — ' + dmy(f.date))}">
+    <div id="fDrop" class="drop">${fs.length ? `<div class="thumbs">${fs.map(f => `<div class="th${f.seen === 0 ? ' new' : ''}" data-f="${f.id}" title="${esc((f.title || f.name || '') + ' — ' + dmy(f.date))}">${f.seen === 0 ? '<b class="newb">NEW</b>' : ''}
         ${f.mime === 'application/pdf' ? '<div class="pdf">PDF</div>' : `<img src="/api/file/${f.id}" loading="lazy" alt="">`}<div class="cap">${dmy(f.date).slice(0, 5)} ${esc(f.title || '')}</div></div>`).join('')}</div>`
       : '<div class="muted small">Drop scans or photos here, press + Image / PDF, or paste a screenshot (Ctrl+V).</div>'}</div>`;
   $('#fUp').onchange = e => { uploadFiles(Array.from(e.target.files)); e.target.value = ''; };
@@ -780,6 +784,7 @@ function fileDialog(f) {
   $('#fT').addEventListener('change', save); $('#fD').addEventListener('change', save);
   $('#fDel').onclick = async () => { if (!confirm('Delete this file?')) return; await api('DELETE', '/api/file/' + f.id); close(); reloadPatient(); };
   $('#fAi').onclick = () => { close(); aiReadLabs(f); };
+  if (f.seen === 0) { f.seen = 1; api('PUT', '/api/file/' + f.id, { seen: 1 }).then(() => { ptCounts(); renderFiles(); }).catch(() => { }); }
 }
 
 /* visit sections as tabs: one section open at a time in a large panel, with a one-line preview of each on its tab */

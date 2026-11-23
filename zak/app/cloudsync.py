@@ -100,8 +100,20 @@ def moved_to(old, new):
         pass
 
 
+def _multi():
+    try:
+        import handoff
+        return handoff.STATE.get('multi'), handoff.pc_id()
+    except Exception:
+        return False, ''
+
+
 def call(url, token, action, timeout=60, **payload):
     url = MOVED.get(url, url)
+    if action in ('push', 'pull') and 'multi' not in payload:     # several devices: each one is told apart on the sheet
+        m, pc = _multi()
+        if m:
+            payload.update(multi=1, pc=pc)
     extra = dict(payload)
     payload.update({'token': token, 'action': action})
     data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
@@ -314,7 +326,48 @@ def pull(conn, url, token, write_lock):
     if done:
         call(url, token, 'ack_patients', rows=done)
         STATE['new_patients'] += len(done)
+    got = []
+    for f in res.get('new_files') or []:              # result sheets photographed by the secretary on the phone
+        try:
+            r = import_phone_file(conn, url, token, write_lock, f)
+            if r:
+                got.append([f['uid'], r])
+        except Exception as e:
+            STATE['error'] = 'Result from the phone not received yet: %s' % e
+    if got:
+        call(url, token, 'ack_files', rows=got)
+        STATE['phone_files'] = STATE.get('phone_files', 0) + len(got)
     return n
+
+
+def import_phone_file(conn, url, token, write_lock, f):
+    """one photographed result → the patient's investigation files (marked new for the doctor). Returns the file row id."""
+    pid = local_patient_id(conn, f.get('patient_id'))
+    files_dir = PATHS.get('files')
+    fname = str(f.get('fname') or '')
+    if not pid or not files_dir or '__' not in fname or '..' in fname:
+        return None                                   # patient not on this PC yet: taken again in a few minutes
+    rel = fname.replace('__', '/')
+    with write_lock:
+        ex = conn.execute('SELECT id FROM files WHERE path=?', (rel,)).fetchone()
+    if ex:
+        return ex[0]
+    r = call(url, token, 'file_get', timeout=300, fname=fname)
+    data = base64.b64decode(r['data'])
+    dst = os.path.normpath(os.path.join(files_dir, rel))
+    if not dst.startswith(os.path.normpath(files_dir)):
+        return None
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    with open(dst + '.part', 'wb') as fh:
+        fh.write(data)
+    os.replace(dst + '.part', dst)
+    d = str(f.get('date') or '')[:10] or datetime.date.today().isoformat()
+    with write_lock:
+        fid = conn.execute('INSERT INTO files(patient_id,date,name,title,mime,path,size,created_by,seen) VALUES(?,?,?,?,?,?,?,?,0)',
+                           (pid, d, str(f.get('name') or '') or 'result', 'Result from the secretary', str(f.get('mime') or ''), rel,
+                            len(data), str(f.get('by') or 'phone'))).lastrowid
+        conn.commit()
+    return fid
 
 
 # ------------------------------------------------------------------ patient list, clinical summaries, config

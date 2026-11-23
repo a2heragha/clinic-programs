@@ -287,9 +287,10 @@ def save_file(conn, b, user):
     os.makedirs(os.path.dirname(full), exist_ok=True)
     with open(full, 'wb') as fh:
         fh.write(data)
-    return conn.execute('INSERT INTO files(patient_id,visit_id,date,name,title,mime,path,size,created_by) VALUES(?,?,?,?,?,?,?,?,?)',
-                        (pid, b.get('visit_id') or None, iso(b.get('date')) or today(), s(b.get('name')), s(b.get('title')), mime,
-                         rel.replace('\\', '/'), len(data), user['name'])).lastrowid
+    return conn.execute('INSERT INTO files(patient_id,visit_id,date,name,title,mime,path,size,created_by,seen) VALUES(?,?,?,?,?,?,?,?,?,?)',
+                        (pid, b.get('visit_id') or None, iso(b.get('date')) or today(), s(b.get('name')), s(b.get('title')) or
+                         ('Result from the secretary' if user['role'] != 'doctor' else None), mime,
+                         rel.replace('\\', '/'), len(data), user['name'], 1 if user['role'] == 'doctor' else 0)).lastrowid
 
 
 class Raw:
@@ -321,7 +322,7 @@ def patient_full(conn, pid, user):
                 'weights': wts, 'today_weight': tw[0] if tw else None}
     visits = [visit_dict(conn, r) for r in conn.execute('SELECT * FROM visits WHERE patient_id=? ORDER BY date DESC, id DESC', (pid,))]
     labs = [dict(r) for r in conn.execute('SELECT * FROM labs WHERE patient_id=? ORDER BY date, id', (pid,))]
-    files = [dict(r) for r in conn.execute('SELECT id,visit_id,date,name,title,mime,size,created_by FROM files WHERE patient_id=? ORDER BY date DESC, id DESC', (pid,))]
+    files = [dict(r) for r in conn.execute('SELECT id,visit_id,date,name,title,mime,size,created_by,COALESCE(seen,1) seen FROM files WHERE patient_id=? ORDER BY date DESC, id DESC', (pid,))]
     return {'patient': p, 'visits': visits, 'labs': labs, 'files': files, 'appointments': appts, 'family': family(conn, pid)}
 
 
@@ -491,7 +492,8 @@ APPT_FIELDS = ['date', 'time', 'patient_id', 'name', 'phone', 'age', 'note', 'st
 
 def appts(conn, date):
     rows = conn.execute('''SELECT a.*, p.name pname, p.phone pphone, p.birth_year, p.dob,
-                             (SELECT COUNT(*) FROM visits v WHERE v.patient_id=a.patient_id) nvisits
+                             (SELECT COUNT(*) FROM visits v WHERE v.patient_id=a.patient_id) nvisits,
+                             (SELECT COUNT(*) FROM files f WHERE f.patient_id=a.patient_id AND COALESCE(f.seen,1)=0) new_files
                            FROM appointments a LEFT JOIN patients p ON p.id=a.patient_id
                            WHERE a.date=? AND COALESCE(a.deleted,0)=0 AND COALESCE(a.hold,0)=0 ORDER BY COALESCE(a.seq, 9999), COALESCE(NULLIF(a.time,''),'99:99'), a.id''', (date,)).fetchall()
     out = []
@@ -919,8 +921,13 @@ class Handler(BaseHTTPRequestHandler):
             if not r:
                 return None
             full = os.path.normpath(os.path.join(FILES_DIR, r['path']))
+            if full.startswith(FILES_DIR) and not os.path.isfile(full) and handoff.STATE.get('multi'):
+                try:                                    # added on another device: fetched now
+                    handoff.fetch_file(r['path'])
+                except Exception:
+                    pass
             if not full.startswith(FILES_DIR) or not os.path.isfile(full):
-                raise ApiError('File is missing on disk', 404)
+                raise ApiError('File is missing on disk (it is still on the other device — try again in a minute)', 404)
             with open(full, 'rb') as fh:
                 return Raw(fh.read(), r['mime'] or 'application/octet-stream')
         if p0 == 'visits':
@@ -1169,6 +1176,9 @@ class Handler(BaseHTTPRequestHandler):
             if method == 'POST':
                 return {'id': save_file(conn, b, user)}
             if method == 'PUT':
+                if set(b) == {'seen'}:                 # the doctor opened a result brought by the secretary
+                    conn.execute('UPDATE files SET seen=1 WHERE id=? AND COALESCE(seen,1)=0', (arg,))
+                    return {'ok': True}
                 conn.execute('UPDATE files SET title=?, date=COALESCE(?,date) WHERE id=?', (s(b.get('title')), iso(b.get('date')), arg))
                 return {'ok': True}
             if method == 'DELETE':
@@ -1342,7 +1352,8 @@ def shutdown_now(delay=3):
 
 
 def main():
-    cloudsync.PATHS.update(config=CONFIG_PATH, db=DB_PATH)
+    cloudsync.PATHS.update(config=CONFIG_PATH, db=DB_PATH, files=FILES_DIR)
+    handoff.META_KEYS = tuple(k for k in META_KEYS if k not in ('rx_off_x', 'rx_off_y'))   # printer offsets belong to each PC
     relink.check(CFG, DB_PATH)
     handoff.startup(CFG, DB_PATH, FILES_DIR, WRITE_LOCK)     # several PCs: fetch the newest data before opening it
     conn = db()

@@ -20,7 +20,10 @@ ALIVE_MS = 90 * 1000      # a holder silent for longer than this is considered s
 HANDOVER_WAIT = 180       # seconds a starting PC waits for the other PC to upload and hand over (while that PC is still alive)
 POLL = 4                  # seconds between lease checks while waiting
 STATE = {'enabled': False, 'holder': False, 'readonly': False, 'offline': False, 'conflict': False,
-         'other': '', 'seq': 0, 'last_push': None, 'error': None, 'files_up': 0, 'files_down': 0}
+         'other': '', 'seq': 0, 'last_push': None, 'error': None, 'files_up': 0, 'files_down': 0,
+         'multi': False, 'pending': 0, 'opseq': 0, 'last_sync': None}
+META_KEYS = ()            # settings copied between devices (set by the server)
+SNAPSHOT_EVERY = 3 * 3600  # several devices: a full copy on Google Drive for new devices and safety
 _push_lock = threading.Lock()
 CTX = {}
 
@@ -222,6 +225,13 @@ def pull_db(L, unsent=False):
         if os.path.exists(x):
             os.remove(x)
     os.replace(part, db_path)
+    if r.get('ops_on'):                         # several devices: this copy includes the changes up to opseq
+        c = _conn()
+        try:
+            prepare_multi(c, int(r.get('opseq') or 0))
+            c.commit()
+        finally:
+            c.close()
     save_local(db_path, {'seq': int(r['seq']), 'sig': db_sig(db_path)})
     STATE['seq'] = int(r['seq'])
     print(' Downloaded the newest data (saved by %s)' % (r.get('by') or 'another PC'))
@@ -422,6 +432,8 @@ def _startup_once(db_path, files_dir):
     print(' Checking for newer data on Google Drive ...')
     try:
         L = _call('lease', timeout=25)          # weak internet: give up quickly and open on this PC's data
+        if not CTX.get('legacy'):
+            return start_multi(L, db_path, files_dir)
         if alive_other(L):
             if not ask('البرنامج يعمل الآن على الحاسبة: %s\n\nهل تريد نقله إلى هذه الحاسبة؟\n'
                        'ستحفظ تلك الحاسبة آخر بياناتها ثم تتوقف عن التعديل.' % (L.get('name') or '?')):
@@ -474,8 +486,8 @@ def _startup_once(db_path, files_dir):
 
 # ------------------------------------------------------------------ while running
 def can_sync():
-    """the appointment/phone sync may only run on the PC holding the lease"""
-    return not STATE['enabled'] or (STATE['holder'] and not STATE['readonly'])
+    """the appointment/phone sync may only run on the PC holding the lease (several devices: on every device)"""
+    return not STATE['enabled'] or STATE['multi'] or (STATE['holder'] and not STATE['readonly'])
 
 
 def hand_over():
@@ -504,6 +516,8 @@ def _net_log(what, e):
 
 
 def tick():
+    if STATE['multi']:
+        return tick_multi()
     if not STATE['enabled'] or STATE['readonly'] or STATE['conflict']:
         return
     try:
@@ -572,6 +586,8 @@ def unsent_late(grace=75):
 
 def unsent():
     """True when this PC has changes that are not on Google Drive yet"""
+    if STATE['multi']:
+        return pending_now() > 0
     if not STATE['enabled'] or not STATE['holder'] or STATE['readonly'] or not CTX.get('db'):
         return False
     st = load_local(CTX['db'])
@@ -581,6 +597,8 @@ def unsent():
 def final_push():
     """on closing: last upload + let the next PC start at once.
     Returns (ok, error). On failure this PC keeps working (not read-only), so nothing is lost by trying."""
+    if STATE['multi']:
+        return final_multi()
     if not STATE['enabled'] or not STATE['holder'] or STATE['readonly']:
         return True, None
     STATE['readonly'] = True                   # no more changes while the last copy is uploaded
@@ -687,3 +705,249 @@ def _shutdown_guard():
             u32.DispatchMessageW(ctypes.byref(msg))
     except Exception as e:
         print(' Shutdown guard not available: %s' % e)
+
+
+# ================================================================== several devices at the same time (opsync.py)
+def _conn():
+    from common import connect
+    return connect(CTX['db'])
+
+
+def get_cursor(c=None):
+    own = c is None
+    c = c or _conn()
+    try:
+        r = c.execute("SELECT v FROM meta WHERE k='ops_cursor'").fetchone()
+        return int(r[0]) if r and r[0] not in (None, '') else None
+    finally:
+        if own:
+            c.close()
+
+
+def set_cursor(c, v):
+    c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('ops_cursor',?)", (str(int(v)),))
+    STATE['opseq'] = int(v)
+
+
+def prepare_multi(c, cursor):
+    """this database takes part in the change list from `cursor` on"""
+    import opsync
+    from common import init_schema
+    init_schema(c)
+    opsync.install(c, META_KEYS)
+    c.execute('DELETE FROM oplog')
+    set_cursor(c, cursor)
+
+
+def pending_now():
+    import opsync
+    if not CTX.get('db'):
+        return 0
+    c = _conn()
+    try:
+        n = opsync.pending(c)
+    finally:
+        c.close()
+    STATE['pending'] = n
+    return n
+
+
+def start_multi(L, db_path, files_dir):
+    """start-up on the new way: no PC hand-over — every device works and exchanges its changes"""
+    import opsync
+    STATE.update(multi=True, holder=True, readonly=False)
+    cur = get_cursor() if os.path.exists(db_path) else None
+    st = load_local(db_path)
+    if L.get('ops_on'):
+        if cur is None:
+            # first start of this device on the new way: the full copy on Google (with its place in the change list);
+            # what this device had and never uploaded is added on top of it
+            unsent = os.path.exists(db_path) and bool(st.get('sig')) and not st.get('clean') and db_sig(db_path) != st['sig']
+            print(' Several devices: downloading the shared data ...')
+            pull_db(L, unsent)
+    else:
+        if alive_other(L):
+            # a PC with the previous program is still working: the change list starts only when it is closed
+            # (it would not be able to upload any more) — this time, one PC at a time as before
+            print(' %s is still running the previous way - one PC at a time until it is closed.' % (L.get('name') or 'Another PC'))
+            STATE.update(multi=False, holder=False)
+            CTX['legacy'] = True
+            return _startup_once(db_path, files_dir)
+        # the very first device: catch up with the newest full copy, then start the change list
+        rs, ls = int(L.get('seq') or 0), int(st.get('seq') or 0)
+        if rs > ls or (rs and not os.path.exists(db_path)) or (rs and ls > rs):
+            unsent = (bool(st.get('sig')) and not st.get('clean') and db_sig(db_path) != st['sig']) or ls > rs
+            pull_db(L, unsent)
+        c = _conn()
+        try:
+            floor = opsync.id_max(c)
+        finally:
+            c.close()
+        try:
+            r = _call('ops_init', timeout=60, floor=floor)
+        except RuntimeError as e:
+            if 'Unknown action' not in str(e):
+                raise
+            # the online script is older: one PC at a time, as before
+            print(' The online script is older than this program - one PC at a time.')
+            STATE.update(multi=False, holder=False)
+            CTX['legacy'] = True
+            return _startup_once(db_path, files_dir)
+        if r.get('already'):                  # another device started it at the same moment: take its copy
+            return start_multi(_call('lease', timeout=25), db_path, files_dir)
+        c = _conn()
+        try:
+            with CTX['write_lock']:
+                prepare_multi(c, 0)
+                c.commit()
+        finally:
+            c.close()
+        print(' Several devices: this device started the shared change list.')
+        push_snapshot(force=True)
+    c = _conn()
+    try:
+        with CTX['write_lock']:
+            opsync.install(c, META_KEYS)          # new columns since the last start are included
+            c.commit()
+    finally:
+        c.close()
+    STATE['opseq'] = get_cursor() or 0
+    sync_round()
+    try:
+        download_missing(limit=50)
+    except Exception as e:
+        print(' Attached files: download failed (%s) - will retry later' % e)
+
+
+def _log_fn(kind, text):
+    _log(kind, text)
+
+
+def sync_round():
+    """send this device's changes, then apply the others'"""
+    import opsync
+    c = _conn()
+    try:
+        sent = opsync.push(c, lambda a, **kw: _call(a, **kw), CTX['write_lock'], pc_id())
+        got = opsync.pull(c, lambda a, **kw: _call(a, **kw), CTX['write_lock'], pc_id(),
+                          lambda: get_cursor(c) or 0, set_cursor, _log_fn)
+        STATE['pending'] = opsync.pending(c)
+    finally:
+        c.close()
+    STATE['last_sync'] = datetime.datetime.now().strftime('%H:%M:%S')
+    if sent:
+        STATE.update(last_push=datetime.datetime.now().strftime('%H:%M'), push_t=time.time())
+    return sent, got
+
+
+def push_snapshot(force=False):
+    """a full copy for devices starting fresh — only when everything of this device is sent (so the copy and its
+    place in the change list match)"""
+    import opsync
+    db_path = CTX['db']
+    if patient_count(db_path) == 0:
+        return False
+    if not force and time.time() - CTX.get('snap_t', 0) < SNAPSHOT_EVERY:
+        return False
+    with CTX['write_lock']:
+        c = _conn()
+        try:
+            if opsync.pending(c):
+                return False
+            cur = get_cursor(c) or 0
+        finally:
+            c.close()
+        data = snapshot(db_path)
+    r = _call('db_push', timeout=300, data=base64.b64encode(data).decode('ascii'), opseq=cur)
+    CTX['snap_t'] = time.time()
+    if not r.get('skipped'):
+        st = load_local(db_path)
+        st.update(seq=int(r['seq']), sig=db_sig(db_path), clean=True)
+        save_local(db_path, st)
+        STATE['seq'] = int(r['seq'])
+    return True
+
+
+def fetch_file(rel):
+    dst = os.path.normpath(os.path.join(CTX['files'], rel))
+    if not dst.startswith(os.path.normpath(CTX['files'])):
+        return
+    r = _call('file_get', timeout=300, fname=_remote_name(rel))
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    with open(dst + '.part', 'wb') as f:
+        f.write(base64.b64decode(r['data']))
+    os.replace(dst + '.part', dst)
+    STATE['files_down'] += 1
+
+
+def download_missing(limit=10):
+    """attached files whose row came from another device: fetch the file itself"""
+    c = _conn()
+    try:
+        rows = c.execute('SELECT path FROM files').fetchall()
+    finally:
+        c.close()
+    n = 0
+    for (rel,) in rows:
+        dst = os.path.normpath(os.path.join(CTX['files'], rel))
+        if not dst.startswith(os.path.normpath(CTX['files'])) or os.path.exists(dst):
+            continue
+        miss = CTX.setdefault('miss', {})
+        if time.time() - miss.get(rel, 0) < 300:
+            continue
+        try:
+            fetch_file(rel)
+        except RuntimeError:
+            miss[rel] = time.time()                   # not on Google yet (the other device uploads it soon)
+            continue
+        n += 1
+        if n >= limit:
+            break
+    return n
+
+
+def tick_multi():
+    try:
+        sync_round()
+        NET['fails'] = 0
+        STATE['offline'] = False
+        STATE['error'] = None
+    except (urllib.error.URLError, OSError) as e:
+        NET['fails'] += 1
+        _net_log('sync failed (%d)' % NET['fails'], e)
+        if NET['fails'] >= OFFLINE_AFTER:
+            STATE['offline'] = True
+            STATE['error'] = 'No internet'
+        return
+    except Exception as e:
+        if STATE['error'] != str(e):
+            print(' Sync: %s' % e)
+            _log('sync', str(e))
+        STATE['error'] = str(e)
+        return
+    for job in (lambda: upload_new_files(limit=3), lambda: download_missing(limit=3), push_snapshot):
+        try:
+            job()
+        except (urllib.error.URLError, OSError) as e:
+            _net_log('files / full copy', e)
+        except Exception as e:
+            _log('sync', 'files / full copy: %s' % e)
+
+
+def final_multi():
+    """Close button: everything of this device to Google before the program stops"""
+    STATE['closing'] = True
+    try:
+        sync_round()
+        try:
+            sync_files(CTX['files'], up=True, down=False)
+        except Exception as e:
+            print(' Attached files not uploaded yet: %s' % e)
+        if pending_now():
+            raise RuntimeError('%d changes are still waiting' % STATE['pending'])
+        print(' Last data uploaded.')
+        return True, None
+    except Exception as e:
+        STATE['closing'] = False
+        print(' Last upload failed: %s' % e)
+        return False, str(e)
