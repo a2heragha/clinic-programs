@@ -13,7 +13,7 @@ The database stays on the clinic PC. Google holds a working copy for the phone:
 
 Protocol: POST JSON {token, action, ...} to the Apps Script web-app URL → {ok, ...}
 """
-import json, time, uuid, base64, hashlib, os, tempfile, threading, datetime, sqlite3, urllib.request, urllib.error
+import json, time, uuid, base64, hashlib, os, tempfile, threading, datetime, sqlite3, urllib.request, urllib.error, http.client, socket
 
 APPT_FIELDS = ['uid', 'date', 'time', 'seq', 'patient_id', 'name', 'phone', 'note', 'status', 'updated_at', 'deleted', 'weight', 'kind', 'call', 'hold', 'reminded']
 STATE = {'enabled': False, 'last_ok': None, 'last_try': None, 'error': None, 'pushed': 0, 'pulled': 0,
@@ -108,6 +108,9 @@ def _multi():
         return False, ''
 
 
+READ_ONLY = ('db_pull', 'ops_pull', 'pull', 'file_get', 'files_list', 'ping', 'lease_get')
+
+
 def call(url, token, action, timeout=60, **payload):
     url = MOVED.get(url, url)
     if action in ('push', 'pull') and 'multi' not in payload:     # several devices: each one is told apart on the sheet
@@ -117,9 +120,18 @@ def call(url, token, action, timeout=60, **payload):
     extra = dict(payload)
     payload.update({'token': token, 'action': action, 'v': 2})     # v: the script refuses programs too old for several devices
     data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
-    req = urllib.request.Request(url, data=data, headers={'Content-Type': 'text/plain;charset=utf-8'}, method='POST')
-    with urllib.request.urlopen(req, timeout=timeout) as r:    # Apps Script answers with a redirect; urllib follows it
-        body = r.read().decode('utf-8')
+    # answers cut half way (mobile data) are asked again — only for questions that change nothing on Google
+    tries = 4 if action in READ_ONLY else 1
+    for n in range(tries):
+        req = urllib.request.Request(url, data=data, headers={'Content-Type': 'text/plain;charset=utf-8'}, method='POST')
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:    # Apps Script answers with a redirect; urllib follows it
+                body = r.read().decode('utf-8')
+            break
+        except (http.client.IncompleteRead, ConnectionError, TimeoutError, socket.timeout) as e:
+            if n == tries - 1:
+                raise
+            time.sleep(2 + 3 * n)
     try:
         res = json.loads(body)
     except ValueError:

@@ -185,6 +185,23 @@ def _log(kind, text):
         pass
 
 
+def db_pull_parts():
+    """the newest full copy, in parts of 400 KB (a 2 MB answer is often cut on mobile data);
+    an older script without parts answers with the whole copy at once"""
+    r = _call('db_pull', timeout=300, part=0)
+    if 'parts' not in r or int(r.get('parts') or 1) <= 1:
+        return r
+    data = [r.get('data') or '']
+    for i in range(1, int(r['parts'])):
+        x = _call('db_pull', timeout=300, part=i)
+        if x.get('file') != r.get('file'):          # a newer copy was saved meanwhile: start again with it
+            return db_pull_parts()
+        data.append(x.get('data') or '')
+        STATE['progress'] = '%d/%d' % (i + 1, int(r['parts']))
+    r['data'] = ''.join(data)
+    return r
+
+
 def _pull(L, unsent):
     """pull_db with "unsent" passed beside it: the phone app wraps pull_db with a one-argument function"""
     CTX['_unsent'] = bool(unsent)
@@ -201,7 +218,7 @@ def pull_db(L, unsent=None):
         unsent = CTX.get('_unsent', False)
     db_path = CTX['db']
     kept = None
-    r = _call('db_pull', timeout=300)
+    r = db_pull_parts()
     if not r.get('data'):
         return False
     raw = gzip.decompress(base64.b64decode(r['data']))

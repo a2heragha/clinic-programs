@@ -331,7 +331,13 @@ function doPost(e) {
       case 'db_pull': {
         const L = lease_();
         if (!L.file) return json_({ ok: true, seq: 0 });
-        return json_({ ok: true, seq: L.seq, t: L.t, by: L.by || '', opseq: L.opseq, ops_on: !!L.ops_on, data: Utilities.base64Encode(DriveApp.getFileById(L.file).getBlob().getBytes()) });
+        const all = Utilities.base64Encode(DriveApp.getFileById(L.file).getBlob().getBytes());
+        // in parts when asked (a phone on mobile data loses a 2 MB answer half way): part i of n, 400 KB each
+        if (req.part !== undefined && req.part !== null) {
+          const SZ = 400000, n = Math.max(1, Math.ceil(all.length / SZ)), i = Math.min(Number(req.part) || 0, n - 1);
+          return json_({ ok: true, seq: L.seq, t: L.t, by: L.by || '', opseq: L.opseq, ops_on: !!L.ops_on, file: L.file, part: i, parts: n, data: all.slice(i * SZ, (i + 1) * SZ) });
+        }
+        return json_({ ok: true, seq: L.seq, t: L.t, by: L.by || '', opseq: L.opseq, ops_on: !!L.ops_on, data: all });
       }
       case 'files_list': {
         const names = [], it = sub_('files').getFiles();
