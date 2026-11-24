@@ -96,7 +96,8 @@ def setup(root):
         DIR = os.path.join(root, 'data', 'logs')
         os.makedirs(DIR, exist_ok=True)
         try:
-            VER = (json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.version'), encoding='utf-8')).get('sha') or '')[:7]
+            import updater
+            VER = updater.version_info(os.path.dirname(os.path.abspath(__file__)))['version']
         except Exception:
             VER = ''
         _no_quickedit()

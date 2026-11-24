@@ -71,9 +71,10 @@ def latest():
     if not res:
         return None
     try:
-        CTX['latest_date'] = res[0]['commit']['committer']['date'][:10]
+        CTX['latest_when'] = res[0]['commit']['committer']['date']          # ISO time (UTC) of the change
+        CTX['latest_date'] = CTX['latest_when'][:10]
     except Exception:
-        CTX['latest_date'] = None
+        CTX['latest_date'] = CTX['latest_when'] = None
     return res[0]['sha']
 
 
@@ -107,8 +108,9 @@ def stage(sha):
         for fn in fns:
             if fn.endswith('.py'):
                 py_compile.compile(os.path.join(dp, fn), cfile=os.path.join(tempfile.gettempdir(), 'upd_check.pyc'), doraise=True)
-    _write(os.path.join(dst, '.version'), {'sha': sha, 'date': CTX.get('latest_date') or time.strftime('%Y-%m-%d'), 'files': n, 'at': time.strftime('%Y-%m-%d %H:%M')})
-    STATE['staged'] = sha[:7]
+    ver = {'sha': sha, 'when': CTX.get('latest_when'), 'date': CTX.get('latest_date') or time.strftime('%Y-%m-%d'), 'files': n, 'at': time.strftime('%Y-%m-%d %H:%M')}
+    _write(os.path.join(dst, '.version'), ver)
+    STATE['staged'] = label(ver)
     return dst
 
 
@@ -197,8 +199,8 @@ def apply_staged():
     _copy_tree(src, CTX['app'])
     shutil.rmtree(src, ignore_errors=True)
     _write(_p('.update_pending'), {'sha': ver['sha'], 'prev': old, 'starts': 0})
-    STATE['applied'] = ver['sha'][:7]
-    print(' Program updated to version %s' % ver['sha'][:7])
+    STATE['applied'] = label(ver)
+    print(' Program updated to version %s' % label(ver))
     return True
 
 
@@ -259,11 +261,25 @@ def boot(app_dir, config_path, online=True):
     return False
 
 
+def label(v):
+    """the version number people see: date and time of the change, local time — 2026-11-24 10:45:12
+    (an older .version without the time: its short code)"""
+    w = (v or {}).get('when')
+    if w:
+        try:
+            import datetime
+            t = datetime.datetime.strptime(w[:19], '%Y-%m-%dT%H:%M:%S').replace(tzinfo=datetime.timezone.utc)
+            return t.astimezone(datetime.timezone(datetime.timedelta(hours=3))).strftime('%Y-%m-%d %H:%M:%S')   # Iraq time
+        except Exception:
+            pass
+    return ((v or {}).get('sha') or '')[:7]
+
+
 def version_info(app_dir=None):
-    """{'version': short code, 'date': 'YYYY-MM-DD'} of the program files now in use — shown at the top of the screen"""
+    """{'version': date and time of the change, 'sha': short code} of the program files now in use — shown at the top of the screen"""
     d = os.path.abspath(app_dir) if app_dir else CTX.get('app') or os.path.dirname(os.path.abspath(__file__))
     v = _read(os.path.join(d, '.version'), {}) or {}
-    return {'version': (v.get('sha') or '')[:7], 'date': (v.get('date') or v.get('at') or '')[:10]}
+    return {'version': label(v), 'sha': (v.get('sha') or '')[:7], 'date': '' if v.get('when') else (v.get('date') or v.get('at') or '')[:10]}
 
 
 def healthy():
