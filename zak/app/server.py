@@ -766,7 +766,7 @@ class Handler(BaseHTTPRequestHandler):
                         errlog.log('handoff', 'Close: last upload failed — ' + str(err))
                         res = {'ok': False, 'uploaded': False, 'error': err}
                     else:
-                        threading.Thread(target=_close_later, args=(3 if ok else 10,), daemon=True).start()
+                        threading.Thread(target=_close_later, args=(0.3 if ok else 10,), daemon=True).start()   # uploaded: closes at once
                         res = {'ok': True, 'uploaded': ok, 'handoff': handoff.STATE['enabled']}
                 elif p0 in ('restore', 'ai_ocr', 'ai_summary', 'ai_test', 'ai_plan', 'ai_doc', 'ai_chat', 'ai_chat_apply') and method == 'POST':
                     res = self._special(conn, p0, body, user)
