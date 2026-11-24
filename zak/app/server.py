@@ -967,7 +967,7 @@ class Handler(BaseHTTPRequestHandler):
             return {'local_last': BACKUP_STATE.get('last'), 'local_error': BACKUP_STATE.get('error'),
                     'drive': bool(url and token), 'drive_last_ms': int(float(meta(conn).get('sync_backup_t') or 0)), 'sync_error': cloudsync.STATE.get('error')}
         if p0 == 'pc':
-            return dict(handoff.STATE, me=handoff.pc_name(), unsent=handoff.unsent_late())
+            return dict(handoff.STATE, me=handoff.pc_name(), unsent=handoff.unsent_late(), update_ready=bool(updater.STATE.get('staged')))
         if p0 == 'status':
             return {'backup': BACKUP_STATE, 'db': DB_PATH,
                     'patients': conn.execute('SELECT COUNT(*) FROM patients').fetchone()[0],

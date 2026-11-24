@@ -16,7 +16,7 @@ Never touched by an update: data/, backups/, files/, incoming/*.json, *.db, conf
 import io, json, os, py_compile, shutil, sys, tarfile, tempfile, threading, time, urllib.request
 
 API = 'https://api.github.com'
-CHECK_EVERY = 6 * 3600
+CHECK_EVERY = 30 * 60        # a new version is downloaded within half an hour; it is used from the next start
 KEEP = ('data', 'backups', 'files', 'before-download', '__pycache__')
 KEEP_FILES = ('config.json', 'handoff.json', 'prayer_times.json', '.version', '.update_pending', '.update_bad')
 STATE = {'version': None, 'staged': None, 'last_check': None, 'error': None, 'applied': None, 'rolled_back': None}

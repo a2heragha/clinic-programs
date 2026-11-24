@@ -468,6 +468,14 @@ async function pcCheck() {
     $('#who').before(b);
   }
   if (h.readonly && $('#pcOff')) $('#pcOff').remove();
+  // a new version was downloaded: it is used from the next start — say so, and offer the restart
+  if (h.update_ready && $('#pcOff') && !$('#updBtn')) {
+    const u = document.createElement('button'); u.id = 'updBtn'; u.className = 'who upd';
+    u.textContent = en ? '🔄 Update ready' : '🔄 تحديث جاهز';
+    u.title = en ? 'Close the program and open it again to use the new version' : 'أغلق البرنامج وافتحه مرة أخرى لاستعمال النسخة الجديدة';
+    u.onclick = () => { alert(en ? 'A new version is ready. The program will upload the last data and close — then open it again.' : 'نسخة جديدة جاهزة. سيرفع البرنامج آخر البيانات ويُغلق — ثم افتحه مرة أخرى.'); $('#pcOff').click(); };
+    $('#pcOff').before(u);
+  }
   let up = $('#upState');
   if (!h.enabled || h.readonly) { if (up) up.remove(); return; }
   if (!up) { up = document.createElement('div'); up.id = 'upState'; up.className = 'net'; $('#net').before(up); }

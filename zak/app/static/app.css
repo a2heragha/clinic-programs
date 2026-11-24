@@ -516,3 +516,5 @@ html.dark .sv textarea,html.dark .rxcol{background:var(--card)}
 .aichat .acf textarea{width:100%;resize:vertical}
 .aichat .acb{display:flex;gap:6px;flex-wrap:wrap}
 .aibtn.chatbtn{background:linear-gradient(135deg,#0f766e,#14b8a6)!important}
+
+#updBtn{background:#16a34a!important;color:#fff!important;border-color:#16a34a!important;font-weight:600}
