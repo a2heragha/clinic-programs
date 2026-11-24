@@ -188,6 +188,14 @@ def _log(kind, text):
 PART = 150000          # characters of each part: small answers get through a weak mobile connection
 
 
+def _read_json(path):
+    try:
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
 def db_pull_parts():
     """the newest full copy, in small parts (a big answer is often cut on mobile data). Each part is asked
     again until it arrives (up to ~15 times), and parts already received are kept on disk, so a new start
@@ -202,12 +210,27 @@ def db_pull_parts():
                     raise
                 print(' (part %d not received - trying again %d)' % (i + 1, n + 1))
                 time.sleep(min(2 + 2 * n, 15))
+    cache = os.path.join(os.path.dirname(CTX['db']), 'download-parts')
+    done = _read_json(os.path.join(cache, 'complete.json'))
+    if done and time.time() - float(done.get('at') or 0) < 1800:
+        # the phone app has just downloaded every part itself (its own connections are much faster there)
+        d = os.path.join(cache, '%s_%s_%d' % (done.get('file'), done.get('seq'), PART))
+        try:
+            parts = []
+            for i in range(int(done['parts'])):
+                with open(os.path.join(d, '%03d' % i)) as f:
+                    parts.append(f.read())
+            r = dict(done, ok=True, data=''.join(parts))
+            shutil.rmtree(cache, ignore_errors=True)
+            print(' The data downloaded by the phone app are used (%d parts).' % int(done['parts']))
+            return r
+        except Exception as e:
+            print(' The parts downloaded by the phone app are not complete (%s) - downloading here.' % e)
     print(' Downloading the data: part 1 ...')
     r = ask(0)
     if 'parts' not in r or int(r.get('parts') or 1) <= 1:
         return r
     n = int(r['parts'])
-    cache = os.path.join(os.path.dirname(CTX['db']), 'download-parts')
     key = '%s_%s_%d' % (r.get('file') or 'x', r.get('seq'), PART)
     if not os.path.isdir(os.path.join(cache, key)):
         shutil.rmtree(cache, ignore_errors=True)
