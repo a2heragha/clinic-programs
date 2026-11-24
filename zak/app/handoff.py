@@ -185,22 +185,53 @@ def _log(kind, text):
         pass
 
 
+PART = 150000          # characters of each part: small answers get through a weak mobile connection
+
+
 def db_pull_parts():
-    """the newest full copy, in parts of 400 KB (a 2 MB answer is often cut on mobile data);
-    an older script without parts answers with the whole copy at once"""
+    """the newest full copy, in small parts (a big answer is often cut on mobile data). Each part is asked
+    again until it arrives (up to ~15 times), and parts already received are kept on disk, so a new start
+    goes on from where it stopped. An older script without parts answers with the whole copy at once."""
+    def ask(i):
+        for n in range(15):
+            try:
+                return _call('db_pull', timeout=90, part=i, size=PART)
+            except Exception as e:
+                no_net = isinstance(e, urllib.error.URLError) and not isinstance(getattr(e, 'reason', None), (socket.timeout, TimeoutError, ConnectionError))
+                if n == 14 or no_net or isinstance(e, RuntimeError):     # no internet at all, or Google said no
+                    raise
+                print(' (part %d not received - trying again %d)' % (i + 1, n + 1))
+                time.sleep(min(2 + 2 * n, 15))
     print(' Downloading the data: part 1 ...')
-    r = _call('db_pull', timeout=300, part=0)
+    r = ask(0)
     if 'parts' not in r or int(r.get('parts') or 1) <= 1:
         return r
-    data = [r.get('data') or '']
-    for i in range(1, int(r['parts'])):
-        x = _call('db_pull', timeout=300, part=i)
+    n = int(r['parts'])
+    cache = os.path.join(os.path.dirname(CTX['db']), 'download-parts')
+    key = '%s_%s_%d' % (r.get('file') or 'x', r.get('seq'), PART)
+    if not os.path.isdir(os.path.join(cache, key)):
+        shutil.rmtree(cache, ignore_errors=True)
+    os.makedirs(os.path.join(cache, key), exist_ok=True)
+    path = lambda i: os.path.join(cache, key, '%03d' % i)
+    with open(path(0), 'w') as f:
+        f.write(r.get('data') or '')
+    for i in range(1, n):
+        if os.path.exists(path(i)):
+            continue
+        x = ask(i)
         if x.get('file') != r.get('file'):          # a newer copy was saved meanwhile: start again with it
             return db_pull_parts()
-        data.append(x.get('data') or '')
-        STATE['progress'] = '%d/%d' % (i + 1, int(r['parts']))
-        print(' Downloading the data: part %d of %d' % (i + 1, int(r['parts'])))
-    r['data'] = ''.join(data)
+        with open(path(i) + '.tmp', 'w') as f:
+            f.write(x.get('data') or '')
+        os.replace(path(i) + '.tmp', path(i))
+        STATE['progress'] = '%d/%d' % (i + 1, n)
+        print(' Downloading the data: part %d of %d' % (i + 1, n))
+    parts = []
+    for i in range(n):
+        with open(path(i)) as f:
+            parts.append(f.read())
+    r['data'] = ''.join(parts)
+    shutil.rmtree(cache, ignore_errors=True)
     return r
 
 
@@ -783,9 +814,27 @@ def pending_now():
     return n
 
 
+def _drop_empty(db_path):
+    """a start stopped half way can leave an empty database file: it is put aside, so the data are fetched again"""
+    try:
+        if not os.path.exists(db_path):
+            return
+        c = sqlite3.connect(db_path)
+        try:
+            ok = c.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('meta','patients')").fetchone()[0] == 2
+        finally:
+            c.close()
+        if not ok:
+            os.replace(db_path, db_path + '.empty-%d' % int(time.time()))
+            print(' An empty database (an earlier start stopped half way) was put aside.')
+    except Exception as e:
+        print(' Database check: %s' % e)
+
+
 def start_multi(L, db_path, files_dir):
     """start-up on the new way: no PC hand-over — every device works and exchanges its changes"""
     import opsync
+    _drop_empty(db_path)
     STATE.update(multi=True, holder=True, readonly=False)
     cur = get_cursor() if os.path.exists(db_path) else None
     st = load_local(db_path)

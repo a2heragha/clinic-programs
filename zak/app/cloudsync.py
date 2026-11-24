@@ -121,16 +121,17 @@ def call(url, token, action, timeout=60, **payload):
     payload.update({'token': token, 'action': action, 'v': 2})     # v: the script refuses programs too old for several devices
     data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
     # answers cut half way (mobile data) are asked again — only for questions that change nothing on Google
-    tries = 4 if action in READ_ONLY else 1
+    tries = 6 if action in READ_ONLY else 1
     for n in range(tries):
         req = urllib.request.Request(url, data=data, headers={'Content-Type': 'text/plain;charset=utf-8'}, method='POST')
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:    # Apps Script answers with a redirect; urllib follows it
                 body = r.read().decode('utf-8')
             break
-        except (http.client.IncompleteRead, ConnectionError, TimeoutError, socket.timeout) as e:
-            if n == tries - 1:
+        except (http.client.IncompleteRead, ConnectionError, TimeoutError, socket.timeout, urllib.error.URLError) as e:
+            if n == tries - 1 or (isinstance(e, urllib.error.URLError) and not isinstance(getattr(e, 'reason', None), (socket.timeout, TimeoutError, ConnectionError))):
                 raise
+            print(' (answer from Google cut - asking again %d/%d)' % (n + 1, tries - 1))
             time.sleep(2 + 3 * n)
     try:
         res = json.loads(body)
