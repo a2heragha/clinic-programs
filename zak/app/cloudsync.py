@@ -108,6 +108,20 @@ def _multi():
         return False, ''
 
 
+# IPv4 first: on some phone networks an IPv6 address of Google answers nothing, and each request waited
+# for it to time out before trying IPv4 (about a minute per call)
+_orig_gai = socket.getaddrinfo
+
+
+def _gai_v4_first(host, *a, **k):
+    res = _orig_gai(host, *a, **k)
+    return sorted(res, key=lambda r: 0 if r[0] == socket.AF_INET else 1)
+
+
+if getattr(socket.getaddrinfo, '__name__', '') != '_gai_v4_first':
+    socket.getaddrinfo = _gai_v4_first
+
+
 READ_ONLY = ('db_pull', 'ops_pull', 'pull', 'file_get', 'files_list', 'ping', 'lease_get')
 
 
