@@ -80,6 +80,7 @@ def latest():
 
 def stage(sha):
     """download the repo at <sha>, keep only <path>/, check every .py compiles → <app>.staged/"""
+    print(' Downloading the new version of the program ...')
     c = CTX['cfg']
     blob = _get('%s/repos/%s/tarball/%s' % (API, c['repo'], sha), raw=True, timeout=300)
     dst = CTX['app'] + '.staged'

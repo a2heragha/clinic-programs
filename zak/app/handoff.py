@@ -188,6 +188,7 @@ def _log(kind, text):
 def db_pull_parts():
     """the newest full copy, in parts of 400 KB (a 2 MB answer is often cut on mobile data);
     an older script without parts answers with the whole copy at once"""
+    print(' Downloading the data: part 1 ...')
     r = _call('db_pull', timeout=300, part=0)
     if 'parts' not in r or int(r.get('parts') or 1) <= 1:
         return r
@@ -198,6 +199,7 @@ def db_pull_parts():
             return db_pull_parts()
         data.append(x.get('data') or '')
         STATE['progress'] = '%d/%d' % (i + 1, int(r['parts']))
+        print(' Downloading the data: part %d of %d' % (i + 1, int(r['parts'])))
     r['data'] = ''.join(data)
     return r
 
