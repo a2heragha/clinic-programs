@@ -122,7 +122,8 @@ function combo(input, source, onPick, opts = {}) {
   let items = [], sel = -1;
   const render = () => {
     const r = input.getBoundingClientRect();
-    box.style.left = r.left + 'px'; box.style.top = (r.bottom + 2) + 'px'; box.style.width = Math.max(r.width, 260) + 'px';
+    const vw = document.documentElement.clientWidth, w = Math.min(Math.max(r.width, 260), vw - 12);     // kept inside the screen
+    box.style.left = Math.max(6, Math.min(r.left, vw - w - 6)) + 'px'; box.style.top = (r.bottom + 2) + 'px'; box.style.width = w + 'px';
     box.innerHTML = items.length ? items.map((x, i) => `<div class="it${i === sel ? ' sel' : ''}" data-i="${i}" dir="auto"><span>${esc(x.label || x)}</span>${x.hint ? '<small>' + esc(x.hint) + '</small>' : ''}</div>`).join('') : '';
     box.classList.toggle('hidden', !items.length);
     box.owner = input;
@@ -361,7 +362,7 @@ async function viewToday(v, date) {
   bindDayBar(v, date, go, 'appt');
   let picked = null;
   const nm = $('#ap_name');
-  combo(nm, async q => q.trim().length < 2 ? [] : (await api('GET', '/api/search?q=' + encodeURIComponent(q))).map(p => ({ label: p.name, hint: (p.age != null ? p.age + 'y · ' : '') + (p.phone || '') + (p.address ? ' · ' + p.address : ''), p })),
+  combo(nm, async q => q.trim().length < 2 ? [] : (await api('GET', '/api/search?q=' + encodeURIComponent(q))).map(p => ({ label: p.name, hint: [p.age != null ? p.age + 'y' : '', p.phone, p.address].filter(Boolean).join(' · '), p })),
     x => { picked = x.p; nm.value = x.p.name; $('#ap_phone').value = x.p.phone || ''; $('#ap_time').focus(); });
   nm.addEventListener('input', () => { picked = null; });
   const add = async () => {
