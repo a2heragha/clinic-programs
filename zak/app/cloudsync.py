@@ -108,18 +108,70 @@ def _multi():
         return False, ''
 
 
-# IPv4 first: on some phone networks an IPv6 address of Google answers nothing, and each request waited
-# for it to time out before trying IPv4 (about a minute per call)
-_orig_gai = socket.getaddrinfo
+# On the phone the requests go through Android's own connection code (the one the browser uses):
+# Python's own connections there were very slow with Google (about a minute for each 150 KB part)
+ANDROID = bool(os.environ.get('ANDROID_ROOT') and os.environ.get('ANDROID_DATA'))
 
 
-def _gai_v4_first(host, *a, **k):
-    res = _orig_gai(host, *a, **k)
-    return sorted(res, key=lambda r: 0 if r[0] == socket.AF_INET else 1)
+def _android_post(url, data, timeout):
+    from java import jclass
+    URL = jclass('java.net.URL')
+    BOS = jclass('java.io.ByteArrayOutputStream')
+    u, method, body = url, 'POST', data
+    for _ in range(6):
+        c = URL(u).openConnection()
+        try:
+            c.setInstanceFollowRedirects(False)
+            c.setConnectTimeout(int(min(timeout, 20) * 1000))
+            c.setReadTimeout(int(timeout * 1000))
+            c.setRequestMethod(method)
+            c.setRequestProperty('Content-Type', 'text/plain;charset=utf-8')
+            if body is not None:
+                c.setDoOutput(True)
+                o = c.getOutputStream()
+                o.write(body)
+                o.close()
+            code = c.getResponseCode()
+            if code in (301, 302, 303, 307, 308):
+                u = str(URL(URL(u), c.getHeaderField('Location')).toString())
+                if code not in (307, 308):
+                    method, body = 'GET', None          # Google answers the POST with a redirect to the result
+                continue
+            st = c.getInputStream() if code < 400 else c.getErrorStream()
+            bos = BOS()
+            if st is not None:
+                from java import jarray
+                buf = jarray('B')(65536)
+                while True:
+                    n = st.read(buf)
+                    if n < 0:
+                        break
+                    bos.write(buf, 0, n)
+                st.close()
+            return bytes(bos.toByteArray()).decode('utf-8')
+        finally:
+            c.disconnect()
+    raise ConnectionError('too many redirects')
 
 
-if getattr(socket.getaddrinfo, '__name__', '') != '_gai_v4_first':
-    socket.getaddrinfo = _gai_v4_first
+def _post(url, data, timeout):
+    global ANDROID
+    if ANDROID:
+        try:
+            return _android_post(url, data, timeout)
+        except (ImportError, TypeError, AttributeError, NameError, ValueError) as e:    # a mistake of this code, not the network:
+            ANDROID = False                                                             # Python's own connections from now on
+            print(' Android connection not usable (%s) - using the usual one' % e)
+        except Exception as e:                       # Java errors in the shape the retries understand
+            name = type(e).__name__ + ' ' + str(e)
+            if 'Timeout' in name:
+                raise socket.timeout(str(e))
+            if 'UnknownHost' in name or 'NoRouteToHost' in name or 'ENETUNREACH' in name:
+                raise urllib.error.URLError('No internet connection (%s)' % e)
+            raise ConnectionError(str(e))
+    req = urllib.request.Request(url, data=data, headers={'Content-Type': 'text/plain;charset=utf-8'}, method='POST')
+    with urllib.request.urlopen(req, timeout=timeout) as r:    # Apps Script answers with a redirect; urllib follows it
+        return r.read().decode('utf-8')
 
 
 READ_ONLY = ('db_pull', 'ops_pull', 'pull', 'file_get', 'files_list', 'ping', 'lease_get')
@@ -137,10 +189,8 @@ def call(url, token, action, timeout=60, **payload):
     # answers cut half way (mobile data) are asked again — only for questions that change nothing on Google
     tries = 6 if action in READ_ONLY else 1
     for n in range(tries):
-        req = urllib.request.Request(url, data=data, headers={'Content-Type': 'text/plain;charset=utf-8'}, method='POST')
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:    # Apps Script answers with a redirect; urllib follows it
-                body = r.read().decode('utf-8')
+            body = _post(url, data, timeout)
             break
         except (http.client.IncompleteRead, ConnectionError, TimeoutError, socket.timeout, urllib.error.URLError) as e:
             if n == tries - 1 or (isinstance(e, urllib.error.URLError) and not isinstance(getattr(e, 'reason', None), (socket.timeout, TimeoutError, ConnectionError))):
