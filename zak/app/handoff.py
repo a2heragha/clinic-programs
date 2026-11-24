@@ -185,9 +185,20 @@ def _log(kind, text):
         pass
 
 
-def pull_db(L, unsent=False):
+def _pull(L, unsent):
+    """pull_db with "unsent" passed beside it: the phone app wraps pull_db with a one-argument function"""
+    CTX['_unsent'] = bool(unsent)
+    try:
+        return pull_db(L)
+    finally:
+        CTX.pop('_unsent', None)
+
+
+def pull_db(L, unsent=None):
     """download the newest data. unsent: this PC had changes that were never uploaded —
     they are added on top of the downloaded data (recover.py) and uploaded with the next upload"""
+    if unsent is None:
+        unsent = CTX.get('_unsent', False)
     db_path = CTX['db']
     kept = None
     r = _call('db_pull', timeout=300)
@@ -335,11 +346,12 @@ def choose_offline():
             return {3: 'exit', 4: 'retry', 5: 'offline'}.get(r, 'retry')
         except Exception:
             pass
-    try:
-        a = input(' No internet. [r]etry, [e]xit, or [o]ffline (at your own risk)? ').strip().lower()
-    except EOFError:
+    # the phone (and any other system): two yes/no questions, shown by the app as its own dialogs
+    if ask('لا يوجد اتصال بالإنترنت الآن، فلم يُتأكد من وجود بيانات أحدث على Google Drive.\n\nإعادة المحاولة؟'):
+        return 'retry'
+    if ask('الاستمرار بدون نت على مسؤوليتك؟\n\nلا تستخدموا أي جهاز آخر حتى يعود الإنترنت هنا وتُرفع البيانات.\n(لا = خروج من البرنامج)'):
         return 'offline'
-    return {'e': 'exit', 'o': 'offline'}.get(a[:1], 'retry')
+    return 'exit'
 
 
 def choose_unsent(name, beat_ms):
@@ -361,11 +373,11 @@ def choose_unsent(name, beat_ms):
             return {3: 'exit', 4: 'retry', 5: 'continue'}.get(r, 'retry')
         except Exception:
             pass
-    try:
-        a = input(' %s stopped without uploading (last seen %s). [r]etry, [e]xit, [c]ontinue here? ' % (name, when)).strip().lower()
-    except EOFError:
+    if ask(text.split('Retry')[0].strip() + '\n\nإعادة الفحص؟'):
+        return 'retry'
+    if ask('الاستمرار هنا على مسؤوليتك؟\n(لا = خروج من البرنامج)'):
         return 'continue'
-    return {'e': 'exit', 'c': 'continue'}.get(a[:1], 'retry')
+    return 'exit'
 
 
 def tell(text, title='عيادة الدكتور زكريا'):
@@ -463,7 +475,7 @@ def _startup_once(db_path, files_dir):
             unsent = (bool(st.get('sig')) and not st.get('clean') and db_sig(db_path) != st['sig']) or ls > rs
             if unsent:
                 print(' This PC had changes that were never uploaded - adding them to the newer data ...')
-            pull_db(L, unsent)
+            _pull(L, unsent)
         else:
             STATE['seq'] = int(st.get('seq') or 0)
         try:
@@ -764,7 +776,7 @@ def start_multi(L, db_path, files_dir):
             # what this device had and never uploaded is added on top of it
             unsent = os.path.exists(db_path) and bool(st.get('sig')) and not st.get('clean') and db_sig(db_path) != st['sig']
             print(' Several devices: downloading the shared data ...')
-            pull_db(L, unsent)
+            _pull(L, unsent)
     else:
         if alive_other(L):
             # a PC with the previous program is still working: the change list starts only when it is closed
@@ -777,7 +789,7 @@ def start_multi(L, db_path, files_dir):
         rs, ls = int(L.get('seq') or 0), int(st.get('seq') or 0)
         if rs > ls or (rs and not os.path.exists(db_path)) or (rs and ls > rs):
             unsent = (bool(st.get('sig')) and not st.get('clean') and db_sig(db_path) != st['sig']) or ls > rs
-            pull_db(L, unsent)
+            _pull(L, unsent)
         c = _conn()
         try:
             floor = opsync.id_max(c)
