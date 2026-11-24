@@ -131,6 +131,34 @@ def check(stage_only=True):
 
 
 # ------------------------------------------------------------------ apply / roll back
+def _writable(path):
+    """files copied from the phone app's package can be read-only: make a folder and its files writable again"""
+    for dp, dns, fns in os.walk(path):
+        for n in dns + fns:
+            try:
+                os.chmod(os.path.join(dp, n), 0o755 if n in dns else 0o644)
+            except OSError:
+                pass
+    try:
+        os.chmod(path, 0o755)
+    except OSError:
+        pass
+
+
+def _cp(s, d):
+    """copy the content only (never the read-only mark), over an older read-only file too"""
+    if os.path.exists(d):
+        try:
+            os.chmod(d, 0o644)
+        except OSError:
+            pass
+    shutil.copyfile(s, d)
+    try:
+        os.chmod(d, 0o644)
+    except OSError:
+        pass
+
+
 def _copy_tree(src, dst):
     for dp, _, fns in os.walk(src):
         for fn in fns:
@@ -140,14 +168,21 @@ def _copy_tree(src, dst):
                 continue
             d = os.path.join(dst, rel)
             os.makedirs(os.path.dirname(d), exist_ok=True)
-            shutil.copy2(s, d + '.part')
+            _cp(s, d + '.part')
+            if os.path.exists(d):
+                try:
+                    os.chmod(d, 0o644)
+                except OSError:
+                    pass
             os.replace(d + '.part', d)
 
 
 def _snapshot_current():
     prev = CTX['app'] + '.prev'
+    if os.path.isdir(prev):
+        _writable(prev)
     shutil.rmtree(prev, ignore_errors=True)
-    os.makedirs(prev)
+    os.makedirs(prev, exist_ok=True)
     for dp, dns, fns in os.walk(CTX['app']):
         rel_dir = os.path.relpath(dp, CTX['app'])
         if rel_dir != '.' and _keep(rel_dir):
@@ -159,7 +194,7 @@ def _snapshot_current():
                 continue
             d = os.path.join(prev, rel)
             os.makedirs(os.path.dirname(d), exist_ok=True)
-            shutil.copy2(os.path.join(dp, fn), d)
+            _cp(os.path.join(dp, fn), d)
 
 
 def merge_remote_config(src):
