@@ -262,6 +262,17 @@ function bindDayBar(root, date, go, kind) {
     if (b.hasAttribute('data-today')) return go(todayISO());
   };
   $('.db-pick', bar).addEventListener('change', e => { if (e.target.value) go(e.target.value); });
+  // phone: a sideways swipe on the days moves a week (the selected day moves with it); a swipe is never taken as a tap
+  const strip = $('.db-days', bar); let t0 = null, swiped = false;
+  strip.addEventListener('touchstart', e => { const p = e.touches[0]; t0 = { x: p.clientX, y: p.clientY }; swiped = false; }, { passive: true });
+  strip.addEventListener('touchend', e => {
+    if (!t0) return; const p = e.changedTouches[0], dx = p.clientX - t0.x, dy = p.clientY - t0.y; t0 = null;
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    swiped = true; e.preventDefault();
+    const rtl = getComputedStyle(bar).direction === 'rtl';
+    go(addDays(date, (rtl ? (dx > 0 ? 1 : -1) : (dx > 0 ? -1 : 1)) * 7));
+  });
+  strip.addEventListener('click', e => { if (swiped) { e.stopPropagation(); e.preventDefault(); swiped = false; } }, true);
   const keys = e => {   // Alt + ← / → moves one day
     if (!e.altKey || !$('.daybar') || /INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || '')) return;
     const rtl = document.documentElement.dir === 'rtl';

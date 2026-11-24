@@ -766,7 +766,7 @@ class Handler(BaseHTTPRequestHandler):
                         errlog.log('handoff', 'Close: last upload failed — ' + str(err))
                         res = {'ok': False, 'uploaded': False, 'error': err}
                     else:
-                        threading.Thread(target=shutdown_now, args=(3 if ok else 10,), daemon=True).start()
+                        threading.Thread(target=_close_later, args=(3 if ok else 10,), daemon=True).start()
                         res = {'ok': True, 'uploaded': ok, 'handoff': handoff.STATE['enabled']}
                 elif p0 in ('restore', 'ai_ocr', 'ai_summary', 'ai_test', 'ai_plan', 'ai_doc', 'ai_chat', 'ai_chat_apply') and method == 'POST':
                     res = self._special(conn, p0, body, user)
@@ -1361,6 +1361,21 @@ def close_console():
                     ctypes.windll.kernel32.CloseHandle(h)
     except Exception:
         pass
+
+
+def _close_later(delay):
+    """the phone app puts its own shutdown_now() in place (no delay argument in older apps) — both are accepted"""
+    f = globals()['shutdown_now']
+    try:
+        import inspect
+        takes = len(inspect.signature(f).parameters) > 0
+    except Exception:
+        takes = True
+    if takes:
+        f(delay)
+    else:
+        time.sleep(delay)
+        f()
 
 
 def shutdown_now(delay=3):
