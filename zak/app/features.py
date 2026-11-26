@@ -485,10 +485,12 @@ def plan_context(pdata, visit, family=None):
         if visit.get(k) not in (None, ''):
             cur.append('%s %s' % (lab, visit[k]))
     for k, lab in (('complaint', 'Complaint'), ('exam', 'Exam'), ('diagnosis', 'Diagnosis so far'), ('plan', 'Plan so far'), ('imaging', 'Imaging')):
-        if (visit.get(k) or '').strip():
-            cur.append('%s: %s' % (lab, visit[k].strip().replace('\n', '; ')))
+        val = visit.get(k)
+        val = val if isinstance(val, str) else ('' if val is None else json.dumps(val, ensure_ascii=False))
+        if val.strip():
+            cur.append('%s: %s' % (lab, val.strip().replace('\n', '; ')))
     if visit.get('meds'):
-        cur.append('Medicines written today: ' + '; '.join(visit['meds']))
+        cur.append('Medicines written today: ' + '; '.join(str(x) for x in visit['meds']))
     L.append(' | '.join(cur))
     return '\n'.join(L)
 
@@ -539,10 +541,12 @@ def visit_context(visit):
         if visit.get(k) not in (None, ''):
             cur.append('%s %s' % (lab, visit[k]))
     for k, lab in (('complaint', 'Complaint'), ('exam', 'Exam'), ('diagnosis', 'Diagnosis'), ('plan', 'Plan'), ('imaging', 'Imaging')):
-        if (visit.get(k) or '').strip():
-            cur.append('%s: %s' % (lab, visit[k].strip().replace('\n', '; ')))
+        val = visit.get(k)
+        val = val if isinstance(val, str) else ('' if val is None else json.dumps(val, ensure_ascii=False))
+        if val.strip():
+            cur.append('%s: %s' % (lab, val.strip().replace('\n', '; ')))
     if visit.get('meds'):
-        cur.append('Medicines written today: ' + '; '.join(visit['meds']))
+        cur.append('Medicines written today: ' + '; '.join(str(x) for x in visit['meds']))
     return ' | '.join(cur)
 
 

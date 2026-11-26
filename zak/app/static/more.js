@@ -401,7 +401,7 @@ function aiChatOpen() {
     const t = $('#acT').value.trim(); if (!t) return;
     await saveVisitNow();
     CHAT.push({ role: 'user', content: t }); $('#acT').value = ''; paint('Thinking…'); $('#acS').disabled = true;
-    try { const r = await api('POST', '/api/ai_chat', Object.assign(visitBody(), { messages: CHAT, plan: AIP })); CHAT.push({ role: 'assistant', content: r.text }); keep(); paint(); }
+    try { const r = await api('POST', '/api/ai_chat', Object.assign(visitBody(), { messages: CHAT, ai_box: AIP })); CHAT.push({ role: 'assistant', content: r.text }); keep(); paint(); }
     catch (e) { CHAT.pop(); $('#acT').value = t; paint(); toast(e.message, true); }
     finally { $('#acS').disabled = false; $('#acT').focus(); }
   };
@@ -413,7 +413,7 @@ function aiChatOpen() {
     if (!CHAT.length) return toast('Talk first, then update the suggestions', true);
     await saveVisitNow();
     const b = $('#acA'), old = b.innerHTML; b.disabled = true; b.innerHTML = '⏳ Updating the suggestions…';
-    try { const r = await api('POST', '/api/ai_chat_apply', Object.assign(visitBody(), { messages: CHAT, plan: AIP })); r.from_chat = true; saveAiPlan(r); renderAiPlan(r);
+    try { const r = await api('POST', '/api/ai_chat_apply', Object.assign(visitBody(), { messages: CHAT, ai_box: AIP })); r.from_chat = true; saveAiPlan(r); renderAiPlan(r);
       toast('Today\'s suggestions updated'); $('#aiPlanBox').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
     catch (e) { toast(e.message, true); }
     finally { b.disabled = false; b.innerHTML = old; }

@@ -842,10 +842,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not d:
                     raise ApiError('Patient not found', 404)
                 v = dict(next((x for x in d['visits'] if x['id'] == int(b.get('visit_id') or 0)), {}))
-                v.update({k: b[k] for k in ('complaint', 'exam', 'diagnosis', 'plan', 'imaging', 'bp_sys', 'bp_dia', 'hr', 'temp', 'spo2', 'rbs', 'weight', 'waist', 'meds') if k in b})
+                # the suggestions box comes as ai_box (older pages sent it as "plan", over the visit's own plan text)
+                box = b.get('ai_box') if 'ai_box' in b else (b.get('plan') if isinstance(b.get('plan'), (dict, list)) else None)
+                v.update({k: b[k] for k in ('complaint', 'exam', 'diagnosis', 'plan', 'imaging', 'bp_sys', 'bp_dia', 'hr', 'temp', 'spo2', 'rbs', 'weight', 'waist', 'meds')
+                          if k in b and not isinstance(b[k], dict) and not (k != 'meds' and isinstance(b[k], list))})
                 fn = features.ai_chat if p0 == 'ai_chat' else features.ai_chat_apply
                 out = fn(m.get('ai_key'), m.get('ai_model_chat') or features.CHAT_MODEL, d, v, d.get('family'),
-                         b.get('messages') or [], b.get('plan'), m.get('ai_prompt_chat'))
+                         b.get('messages') or [], box, m.get('ai_prompt_chat'))
                 return {'text': out} if p0 == 'ai_chat' else out
             if p0 == 'ai_doc':
                 if user['role'] != 'doctor':
